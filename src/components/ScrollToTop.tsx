@@ -26,7 +26,7 @@ export function ScrollToTop() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: reduceMotion ? 0 : 16 }}
           transition={{ duration: 0.15 }}
-          className="fixed right-5 bottom-5 z-40 max-[480px]:right-4 max-[480px]:bottom-4">
+          className="fixed right-[calc(1.25rem+env(safe-area-inset-right))] bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-40 max-[480px]:right-[calc(1rem+env(safe-area-inset-right))] max-[480px]:bottom-[calc(1rem+env(safe-area-inset-bottom))]">
           <GameButton
             size="icon"
             aria-label="Voltar ao topo"

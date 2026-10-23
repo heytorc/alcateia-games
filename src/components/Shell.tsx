@@ -27,10 +27,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <TooltipProvider>
       <div
-        className="neon-grid scanlines min-h-screen overflow-x-clip bg-background"
+        className="neon-grid scanlines min-h-screen overflow-x-clip bg-background pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]"
         style={gameColor ? ({ "--game-c": gameColor } as React.CSSProperties) : undefined}>
         <header className="sticky top-0 z-40 border-b border-transparent bg-background/85 backdrop-blur-md">
-          <div className="mx-auto flex w-[min(1180px,calc(100%-40px))] items-center justify-between gap-2 py-[26px] max-[480px]:py-[18px]">
+          <div className="mx-auto flex w-[min(1180px,calc(100%-40px))] items-center justify-between gap-2 pt-[calc(26px+env(safe-area-inset-top))] pb-[26px] max-[480px]:pt-[calc(18px+env(safe-area-inset-top))] max-[480px]:pb-[18px]">
           <Logo />
           <nav className="flex min-w-0 items-center gap-2 text-sm font-bold text-muted-foreground">
             <Link
