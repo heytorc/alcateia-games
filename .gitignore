@@ -1,0 +1,31 @@
+# Dependências e build
+node_modules
+dist
+*.tsbuildinfo
+.vite
+coverage
+
+# Ambiente e segredos (só .env.example é versionado)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Sistema e logs
+.DS_Store
+*.log
+*.local
+*-E
+
+# Claude Code local
+.claude/settings.local.json
+
+# Fora do jogo (ficam no disco, mas não sobem para o repositório)
+# Fontes dos GIFs de public/wolves/
+wolf-animations/
+wolf-rpg/
+# Experimentos de logo, ícones e mocks
+docs/
+# Jogo em construção, sem rota
+src/pages/games/MineswecherGame.tsx
