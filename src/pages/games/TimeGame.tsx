@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GameIcon } from "@/components/games/GameIcon";
-import { Play, RotateCcw, SkipForward, Trophy, X, Plus, LogIn, LogOut } from "lucide-react";
+import { Play, RotateCcw, SkipForward, Trophy, Plus, LogIn } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
@@ -16,12 +16,12 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useGameStore } from "@/lib/store";
 import { JoinRoomDialog } from "@/components/games/JoinRoomDialog";
 import { roomDescriptionClass, roomHeadingClass, roomPageClass } from "@/components/games/room-styles";
-import { useRestoreRoom } from "@/hooks/useRestoreRoom";
+import { isHostRoom, setHostRoom, useRestoreRoom } from "@/hooks/useRestoreRoom";
 import { ErrorPage } from "@/components/ErrorPage";
 import { useOnline } from "@/hooks/useOnline";
 import { GameButton } from "@/components/games/GameButton";
 import { LedSign } from "@/components/games/LedSign";
-import { ScoreCards } from "@/components/games/ScoreCards";
+import { PartialPodium, podiumOrder } from "@/components/games/PartialPodium";
 import { DigitalTimer } from "@/components/games/DigitalTimer";
 import { BottomSheet } from "@/components/BottomSheet";
 import type { PlayerListItem } from "@/components/games/PlayerList";
@@ -37,6 +37,8 @@ type RoundStartPayload = {
   hideTargetOnStart: boolean;
   scores: Score[];
 };
+type PodiumPayload = { round: number; scores: Score[] };
+type PodiumState = PodiumPayload & { previous: string[] | null };
 type TimeGamePresence = { name: string; avatar: string; roundStart?: RoundStartPayload };
 type RoomConfig = {
   roundCount: number;
@@ -65,7 +67,7 @@ function RoomSettingsSummary({ roundCount, maxTargetSeconds, targetPrecision, hi
     ["Rodadas", String(roundCount)],
     ["Tempo máximo", `${maxTargetSeconds}s`],
     ["Precisão", targetPrecision === "seconds" ? "Segundos" : "Centésimos"],
-    ["Cronômetro embaçado", hideTargetOnStart ? "Sim" : "Não"],
+    ["Ver tempo", hideTargetOnStart ? "Não" : "Sim"],
   ];
   return (
     <dl aria-label="Configurações da sala" className="grid w-full max-w-[520px] grid-cols-2 gap-2 sm:grid-cols-4">
@@ -102,12 +104,13 @@ export function TimeGame() {
   const [targetMilliseconds, setTargetMilliseconds] = useState<number | null>(null);
   const [scores, setScores] = useState<Score[]>([]);
   const [submitted, setSubmitted] = useState<string[]>([]);
-  const [startedPlayers, setStartedPlayers] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [roundResult, setRoundResult] = useState<number | null>(null);
   const [exactHit, setExactHit] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [podium, setPodium] = useState<PodiumState | null>(null);
+  const lastPodiumOrder = useRef<string[] | null>(null);
   const playerId = useRef(createClientId());
   const roster: PlayerListItem[] = Object.entries(players).map(([id, player]) => ({
     id,
@@ -117,6 +120,8 @@ export function TimeGame() {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const startedAt = useRef(0);
   const activeRoundRef = useRef(0);
+  /** Após voltar ao lobby, a presença ainda pode trazer o `roundStart` antigo até o anfitrião reanunciar: ignora até a próxima rodada. */
+  const ignorePresenceRound = useRef(false);
   const usedTargetValues = useRef<number[]>([]);
   const settingsSnapshot = useRef<RoomConfig | null>(null);
   const { profile, soundEnabled, setLastRoom } = useGameStore();
@@ -124,6 +129,7 @@ export function TimeGame() {
   useRestoreRoom("time", (restoredPin) => {
     setRoom(restoredPin);
     setJoined(true);
+    setIsHost(isHostRoom("time", restoredPin));
   });
 
   const leaderboard = useMemo(() => [...scores].sort((left, right) => left.excessMs - right.excessMs), [scores]);
@@ -163,6 +169,9 @@ export function TimeGame() {
 
   const applyRoundStart = (payload: RoundStartPayload) => {
     activeRoundRef.current = payload.round;
+    ignorePresenceRound.current = false;
+    if (payload.round === 1) lastPodiumOrder.current = null;
+    setPodium(null);
     setRound(payload.round);
     setRoundCount(payload.totalRounds);
     setMaxTargetSeconds(payload.maxTargetSeconds);
@@ -173,12 +182,34 @@ export function TimeGame() {
     setTargetPrecision(payload.targetPrecision);
     setScores(payload.scores);
     setSubmitted([]);
-    setStartedPlayers([]);
     setElapsedMs(0);
     setRoundResult(null);
     setExactHit(false);
     setRunning(false);
     setFinished(false);
+  };
+
+  const applyLobbyReset = () => {
+    activeRoundRef.current = 0;
+    ignorePresenceRound.current = true;
+    usedTargetValues.current = [];
+    lastPodiumOrder.current = null;
+    setPodium(null);
+    setFinished(false);
+    setRunning(false);
+    setRound(0);
+    setTargetMilliseconds(null);
+    setScores([]);
+    setSubmitted([]);
+    setRoundResult(null);
+    setExactHit(false);
+    setElapsedMs(0);
+    setLastRoom(room, "time");
+  };
+
+  const applyPodium = (payload: PodiumPayload) => {
+    setPodium({ ...payload, previous: lastPodiumOrder.current });
+    lastPodiumOrder.current = podiumOrder(payload.scores);
   };
 
   const applyConfig = (config: RoomConfig) => {
@@ -222,7 +253,7 @@ export function TimeGame() {
           ]),
         ),
       );
-      if (activeRoundRef.current === 0) {
+      if (activeRoundRef.current === 0 && !ignorePresenceRound.current) {
         const activeRound = Object.values(presence)
           .flat()
           .find((entry) => entry.roundStart)?.roundStart;
@@ -242,12 +273,10 @@ export function TimeGame() {
       .on("broadcast", { event: "round-start" }, ({ payload }: { payload: RoundStartPayload }) =>
         applyRoundStart(payload),
       )
-      .on("broadcast", { event: "timer-start" }, ({ payload }: { payload: { id: string } }) => {
-        setStartedPlayers((current) => (current.includes(payload.id) ? current : [...current, payload.id]));
-      })
+      .on("broadcast", { event: "back-to-lobby" }, applyLobbyReset)
+      .on("broadcast", { event: "podium-show" }, ({ payload }: { payload: PodiumPayload }) => applyPodium(payload))
       .on("broadcast", { event: "round-score" }, ({ payload }: { payload: Score }) => {
         setSubmitted((current) => (current.includes(payload.id) ? current : [...current, payload.id]));
-        setStartedPlayers((current) => (current.includes(payload.id) ? current : [...current, payload.id]));
         setScores((current) => {
           const previous = current.find((score) => score.id === payload.id);
           return [
@@ -298,6 +327,7 @@ export function TimeGame() {
     setRoom(newPin);
     setRoomClosed(false);
     setIsHost(true);
+    setHostRoom("time", newPin, true);
     setJoined(true);
     setFinished(false);
     navigate(`?pin=${newPin}`);
@@ -366,8 +396,6 @@ export function TimeGame() {
       setRunning(true);
       playStopwatchStartSound(soundEnabled);
       if ("vibrate" in navigator) navigator.vibrate(150);
-      setStartedPlayers((current) => (current.includes(playerId.current) ? current : [...current, playerId.current]));
-      await channelRef.current?.send({ type: "broadcast", event: "timer-start", payload: { id: playerId.current } });
       return;
     }
     setRunning(false);
@@ -395,6 +423,20 @@ export function TimeGame() {
     await channelRef.current?.send({ type: "broadcast", event: "round-score", payload: score });
   };
 
+  const backToLobby = async () => {
+    applyLobbyReset();
+    const channel = channelRef.current;
+    // Sem `roundStart` na presença: quem entrar agora cai no lobby, não na rodada antiga.
+    await channel?.track({ name: profile.name.trim(), avatar: profile.avatar, pin: room });
+    await channel?.send({ type: "broadcast", event: "back-to-lobby", payload: {} });
+  };
+
+  const showPartialPodium = async () => {
+    const payload: PodiumPayload = { round, scores };
+    applyPodium(payload);
+    await channelRef.current?.send({ type: "broadcast", event: "podium-show", payload });
+  };
+
   const finishGame = async () => {
     setFinished(true);
     setLastRoom(null, null);
@@ -407,8 +449,9 @@ export function TimeGame() {
     if (channel && supabase) await supabase.removeChannel(channel);
     activeRoundRef.current = 0;
     usedTargetValues.current = [];
+    setHostRoom("time", room, false);
     setJoined(false);
-    setRoomClosed(true);
+    navigate({ search: "" }, { replace: true });
     setLastRoom(null, null);
     setFinished(false);
     setRunning(false);
@@ -416,7 +459,6 @@ export function TimeGame() {
     setTargetMilliseconds(null);
     setScores([]);
     setSubmitted([]);
-    setStartedPlayers([]);
     setRoundResult(null);
     setExactHit(false);
     setElapsedMs(0);
@@ -435,83 +477,84 @@ export function TimeGame() {
     setTargetMilliseconds(null);
     setScores([]);
     setSubmitted([]);
-    setStartedPlayers([]);
     setRoundResult(null);
     setExactHit(false);
     setElapsedMs(0);
-    navigate("/");
+    navigate({ search: "" }, { replace: true });
   };
+
+  const leaveConfig = { host: isHost, onConfirm: isHost ? closeRoom : leaveRoom };
 
   const setupPageClass = "w-full px-5 md:px-10";
 
   const configForm = (
-            <div className="mb-4">
-        <div className="my-3 w-full">
-          <Label className="justify-between text-base font-bold text-[#c2b9d1]">
-            Rodadas{" "}
-            <NumberStepper
-              ariaLabel="Total de rodadas"
-              min={1}
-              max={20}
-              value={roundCountInput}
-              onChange={setRoundCountInput}
-              onBlur={() => validateConfigField("roundCount")}
-              ariaInvalid={Boolean(configErrors.roundCount)}
-              ariaDescribedBy="round-count-error"
-            />
-          </Label>
-          {configErrors.roundCount && (
-            <small className="mt-1.5 block text-xs font-bold text-[#ff8fab]" id="round-count-error">
-              {configErrors.roundCount}
-            </small>
-          )}
+    <div className="flex flex-col gap-y-3 mb-4">
+      <div className="my-3 w-full">
+        <Label className="justify-between text-base font-bold text-[#c2b9d1]">
+          Rodadas{" "}
+          <NumberStepper
+            ariaLabel="Total de rodadas"
+            min={1}
+            max={20}
+            value={roundCountInput}
+            onChange={setRoundCountInput}
+            onBlur={() => validateConfigField("roundCount")}
+            ariaInvalid={Boolean(configErrors.roundCount)}
+            ariaDescribedBy="round-count-error"
+          />
+        </Label>
+        {configErrors.roundCount && (
+          <small className="mt-1.5 block text-xs font-bold text-[#ff8fab]" id="round-count-error">
+            {configErrors.roundCount}
+          </small>
+        )}
+      </div>
+      <div className="my-3 w-full">
+        <Label className="justify-between text-base font-bold text-[#c2b9d1]">
+          Tempo máximo{" "}
+          <NumberStepper
+            ariaLabel="Tempo máximo em segundos"
+            min={5}
+            max={120}
+            value={maxTargetSecondsInput}
+            onChange={setMaxTargetSecondsInput}
+            onBlur={() => validateConfigField("maxTargetSeconds")}
+            ariaInvalid={Boolean(configErrors.maxTargetSeconds)}
+            ariaDescribedBy="max-target-seconds-error"
+          />
+        </Label>
+        {configErrors.maxTargetSeconds && (
+          <small className="mt-1.5 block text-xs font-bold text-[#ff8fab]" id="max-target-seconds-error">
+            {configErrors.maxTargetSeconds}
+          </small>
+        )}
+      </div>
+      <div className="my-3 flex w-full flex-wrap items-center justify-between gap-2 text-base font-bold text-[#c2b9d1]">
+        <span>Precisão do tempo alvo</span>
+        <div className="flex w-full overflow-hidden rounded-md">
+          <GameButton
+            size="sm"
+            className="min-w-0 flex-1 whitespace-normal rounded-none p-8"
+            variant={targetPrecision === "seconds" ? "game" : "special"}
+            type="button"
+            onClick={() => setTargetPrecision("seconds")}>
+            Segundos
+          </GameButton>
+          <GameButton
+            size="sm"
+            className="min-w-0 flex-1 whitespace-normal rounded-none p-8"
+            variant={targetPrecision === "milliseconds" ? "game" : "special"}
+            type="button"
+            onClick={() => setTargetPrecision("milliseconds")}>
+            Segundos e centésimos
+          </GameButton>
         </div>
-        <div className="my-3 w-full">
-          <Label className="justify-between text-base font-bold text-[#c2b9d1]">
-            Tempo máximo{" "}
-            <NumberStepper
-              ariaLabel="Tempo máximo em segundos"
-              min={5}
-              max={120}
-              value={maxTargetSecondsInput}
-              onChange={setMaxTargetSecondsInput}
-              onBlur={() => validateConfigField("maxTargetSeconds")}
-              ariaInvalid={Boolean(configErrors.maxTargetSeconds)}
-              ariaDescribedBy="max-target-seconds-error"
-            />
-          </Label>
-          {configErrors.maxTargetSeconds && (
-            <small className="mt-1.5 block text-xs font-bold text-[#ff8fab]" id="max-target-seconds-error">
-              {configErrors.maxTargetSeconds}
-            </small>
-          )}
-        </div>
-        <div className="my-3 flex w-full flex-wrap items-center justify-between gap-2 text-base font-bold text-[#c2b9d1]">
-          <span>Precisão do tempo alvo</span>
-          <div className="flex w-full overflow-hidden rounded-md">
-            <GameButton
-              size="sm"
-              className="min-w-0 flex-1 whitespace-normal rounded-none"
-              variant={targetPrecision === "seconds" ? "game" : "special"}
-              type="button"
-              onClick={() => setTargetPrecision("seconds")}>
-              Segundos
-            </GameButton>
-            <GameButton
-              size="sm"
-              className="min-w-0 flex-1 whitespace-normal rounded-none"
-              variant={targetPrecision === "milliseconds" ? "game" : "special"}
-              type="button"
-              onClick={() => setTargetPrecision("milliseconds")}>
-              Segundos e centésimos
-            </GameButton>
-          </div>
-        </div>
-        <div className="my-[5px] mb-3.5 flex w-full items-center justify-between text-base font-bold text-[#c2b9d1]">
-          <span>Embaçar cronômetro ao iniciar</span>
-          <Switch checked={hideTargetOnStart} onChange={setHideTargetOnStart} />
-        </div>
-            </div>
+      </div>
+      <div className="my-[5px] mb-3.5 flex w-full items-center justify-between text-base font-bold text-[#c2b9d1]">
+        <span>Ver tempo</span>
+        <Switch checked={!hideTargetOnStart} onChange={(visible) => setHideTargetOnStart(!visible)} />
+      </div>
+    </div>
   );
 
   if (!online && !joined) return <ErrorPage kind="offline" />;
@@ -599,7 +642,13 @@ export function TimeGame() {
             }>
             {configForm}
           </BottomSheet>
-          <JoinRoomDialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen} pin={room} onPinChange={setRoom} onConfirm={joinRoom} />
+          <JoinRoomDialog
+            open={joinDialogOpen}
+            onOpenChange={setJoinDialogOpen}
+            pin={room}
+            onPinChange={setRoom}
+            onConfirm={joinRoom}
+          />
         </main>
       </Shell>
     );
@@ -608,7 +657,7 @@ export function TimeGame() {
     return (
       <Shell>
         <main className={roomPageClass}>
-          <GameHeader title="Tempo certo" room={{ pin: room, players: roster }} />
+          <GameHeader title="Tempo certo" room={{ pin: room, players: roster }} leave={leaveConfig} />
           <Card className="mx-auto my-[35px] flex w-full max-w-[670px] items-center rounded-[6px] p-9 text-center sm:p-9">
             <CardContent className="flex w-full flex-col items-center gap-5">
               <Trophy className="mb-3 text-[#fdcb6e]" size={48} />
@@ -647,18 +696,8 @@ export function TimeGame() {
               </div>
               {isHost && (
                 <GameActions>
-                  <GameButton variant="game" onClick={() => startRound(1)}>
+                  <GameButton variant="game" onClick={backToLobby}>
                     <RotateCcw /> Jogar novamente
-                  </GameButton>
-                  <GameButton variant="danger" onClick={closeRoom}>
-                    <X /> Encerrar sala
-                  </GameButton>
-                </GameActions>
-              )}
-              {!isHost && (
-                <GameActions>
-                  <GameButton variant="special" onClick={leaveRoom}>
-                    <LogOut /> Sair da sala
                   </GameButton>
                 </GameActions>
               )}
@@ -676,46 +715,37 @@ export function TimeGame() {
             title="Tempo certo"
             room={{ pin: room, players: roster }}
             onSettings={isHost ? openSettings : undefined}
+            leave={leaveConfig}
           />
           <div className="my-10 flex w-full flex-col items-center gap-6 text-center">
-              <h2 className={roomHeadingClass}>Alcateia reunida</h2>
-              <WolfFieldLobby players={roster} />
-              <RoomSettingsSummary
-                roundCount={roundCount}
-                maxTargetSeconds={maxTargetSeconds}
-                targetPrecision={targetPrecision}
-                hideTargetOnStart={hideTargetOnStart}
-              />
-              {isHost ? (
-                <GameActions>
-                  <GameButton variant="game" onClick={() => startRound(1)}>
-                    <Play /> Iniciar
-                  </GameButton>
-                  <GameButton variant="danger" onClick={closeRoom}>
-                    <X /> Encerrar sala
-                  </GameButton>
-                </GameActions>
-              ) : (
-                <>
-                  <p className={roomDescriptionClass}>Aguarde o anfitrião iniciar o jogo.</p>
-                  <GameActions>
-                    <GameButton variant="special" onClick={leaveRoom}>
-                      <LogOut /> Sair da sala
-                    </GameButton>
-                  </GameActions>
-                </>
-              )}
-              <RoomDirectory
-                game="time"
-                isHosting={isHost}
-                showList={false}
-                hostName={profile.name}
-                hostAvatar={profile.avatar}
-                pin={room}
-                rounds={roundCount}
-                onJoin={() => undefined}
-              />
-            </div>
+            <h2 className={roomHeadingClass}>Alcateia reunida</h2>
+            <WolfFieldLobby players={roster} />
+            <RoomSettingsSummary
+              roundCount={roundCount}
+              maxTargetSeconds={maxTargetSeconds}
+              targetPrecision={targetPrecision}
+              hideTargetOnStart={hideTargetOnStart}
+            />
+            {isHost ? (
+              <GameActions>
+                <GameButton variant="game" onClick={() => startRound(1)}>
+                  <Play /> Iniciar
+                </GameButton>
+              </GameActions>
+            ) : (
+              <p className={roomDescriptionClass}>Aguarde o anfitrião iniciar o jogo.</p>
+            )}
+            <RoomDirectory
+              game="time"
+              isHosting={isHost}
+              showList={false}
+              hostName={profile.name}
+              hostAvatar={profile.avatar}
+              pin={room}
+              rounds={roundCount}
+              onJoin={() => undefined}
+            />
+          </div>
           <BottomSheet
             open={settingsOpen}
             onOpenChange={(open) => !open && closeSettings()}
@@ -737,11 +767,37 @@ export function TimeGame() {
       </Shell>
     );
 
+  if (podium)
+    return (
+      <Shell>
+        <main className={`${roomPageClass}`}>
+          <GameHeader title="Tempo certo" room={{ pin: room, players: roster }} leave={leaveConfig} />
+          <section className="mx-auto my-[25px] flex w-full max-w-[560px] flex-col items-center gap-10">
+            <div className="text-center">
+              <Badge variant="outline" className="mb-3">
+                RODADA {podium.round}/{roundCount}
+              </Badge>
+              <h2 className="font-heading text-[28px] font-bold">Pódio parcial</h2>
+            </div>
+            <PartialPodium players={podium.scores} previousOrder={podium.previous} selfId={playerId.current} />
+            {isHost && (
+              <GameActions>
+                <GameButton variant="game" onClick={() => startRound(round + 1)}>
+                  <SkipForward /> Continuar
+                </GameButton>
+              </GameActions>
+            )}
+            {!isHost && <p className={roomDescriptionClass}>Aguarde o anfitrião iniciar a próxima rodada.</p>}
+          </section>
+        </main>
+      </Shell>
+    );
+
   return (
     <Shell>
       <main className={roomPageClass}>
-        <GameHeader title="Tempo certo" room={{ pin: room, players: roster }} />
-        <section className="mx-auto my-[25px] mb-[60px] flex w-full max-w-[700px] flex-col items-center gap-[18px]">
+        <GameHeader title="Tempo certo" room={{ pin: room, players: roster }} leave={leaveConfig} />
+        <section className="mx-auto my-[25px] mb-[60px] flex w-full max-w-[700px] flex-col items-center gap-15">
           <div className="flex w-full flex-row items-end justify-between gap-4 sm:gap-8">
             <div className="flex min-w-0 flex-1 flex-col items-center gap-3 text-center">
               <span className="text-base text-[#c9c4dd]">Rodada</span>
@@ -756,21 +812,12 @@ export function TimeGame() {
               </div>
             </div>
           </div>
-          <ScoreCards
-            selfId={playerId.current}
-            players={Object.entries(players).map(([id, player]) => ({
-              id,
-              ...player,
-              excessMs: scores.find((item) => item.id === id)?.excessMs,
-              status: submitted.includes(id) ? "Finalizou" : startedPlayers.includes(id) ? "Jogando" : "Aguardando",
-            }))}
-          />
           <DigitalTimer
             elapsedMs={elapsedMs}
             running={running}
             finished={roundResult !== null}
             exact={exactHit}
-            blurReadout={hideTargetOnStart && running}
+            hideReadout={hideTargetOnStart && running}
             onPress={toggleTimer}
           />
           <p className="sr-only" aria-live="polite">
@@ -780,7 +827,7 @@ export function TimeGame() {
             <>
               <GameActions>
                 {round < roundCount ? (
-                  <GameButton disabled={!allSubmitted} onClick={() => startRound(round + 1)}>
+                  <GameButton disabled={!allSubmitted} onClick={showPartialPodium}>
                     <SkipForward /> Próxima rodada
                   </GameButton>
                 ) : (
@@ -788,21 +835,13 @@ export function TimeGame() {
                     <Trophy /> Ver pódio
                   </GameButton>
                 )}
-                <GameButton variant="danger" onClick={closeRoom}>
-                  <X /> Encerrar sala
-                </GameButton>
               </GameActions>
               {!allSubmitted && (
-                <small className="w-full text-center my-5 text-xs text-[#bcb5cf]">Aguarde todos os participantes finalizarem.</small>
+                <small className="w-full text-center my-5 text-xs text-[#bcb5cf]">
+                  Aguardando participantes: {submitted.length}/{playerIds.length} finalizaram.
+                </small>
               )}
             </>
-          )}
-          {!isHost && (
-            <GameActions>
-              <GameButton variant="special" onClick={leaveRoom}>
-                <LogOut /> Sair da sala
-              </GameButton>
-            </GameActions>
           )}
         </section>
       </main>

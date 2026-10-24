@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { GameIcon } from "@/components/games/GameIcon";
-import { RotateCcw, X, Plus, LogIn, LogOut, Play } from "lucide-react";
+import { RotateCcw, Plus, LogIn, Play } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { GameActions, GameDialogFooter, GameHeader, Shell, Switch } from "@/components";
 import { RoomDirectory } from "@/components/games/RoomDirectory";
@@ -15,7 +15,7 @@ import { IconCounter } from "@/components/IconCounter";
 import { NeonSlider } from "@/components/NeonSlider";
 import { JoinRoomDialog } from "@/components/games/JoinRoomDialog";
 import { roomDescriptionClass, roomHeadingClass, roomPageClass } from "@/components/games/room-styles";
-import { useRestoreRoom } from "@/hooks/useRestoreRoom";
+import { isHostRoom, setHostRoom, useRestoreRoom } from "@/hooks/useRestoreRoom";
 import { ErrorPage } from "@/components/ErrorPage";
 import { useOnline } from "@/hooks/useOnline";
 import { GameButton } from "@/components/games/GameButton";
@@ -98,7 +98,7 @@ export function CampoMinadoGame() {
   useRestoreRoom("campo-minado", (restoredPin) => {
     setRoom(restoredPin);
     setJoined(true);
-    if (localStorage.getItem(`host_room_${restoredPin}`) === "true") setIsHost(true);
+    setIsHost(isHostRoom("campo-minado", restoredPin));
   });
 
   useEffect(() => {
@@ -210,7 +210,7 @@ export function CampoMinadoGame() {
     setRoom(newPin);
     setIsHost(true);
     setJoined(true);
-    localStorage.setItem(`host_room_${newPin}`, 'true');
+    setHostRoom("campo-minado", newPin, true);
     clearMatch();
 
     navigate(`?pin=${newPin}`);
@@ -312,22 +312,22 @@ export function CampoMinadoGame() {
   const leaveRoom = async () => {
     const channel = channelRef.current;
     if (channel && supabase) await supabase.removeChannel(channel);
-    localStorage.removeItem(`host_room_${room}`);
+    setHostRoom("campo-minado", room, false);
 
     setJoined(false);
     setLastRoom(null, null);
     clearMatch();
-    navigate("/");
+    navigate({ search: "" }, { replace: true });
   };
 
   const closeRoom = async () => {
     const channel = channelRef.current;
     if (channel) await channel.send({ type: "broadcast", event: "room-closed", payload: {} });
     if (channel && supabase) await supabase.removeChannel(channel);
-    localStorage.removeItem(`host_room_${room}`);
+    setHostRoom("campo-minado", room, false);
 
     setJoined(false);
-    setRoomClosed(true);
+    navigate({ search: "" }, { replace: true });
     setLastRoom(null, null);
     clearMatch();
   };
@@ -379,6 +379,7 @@ export function CampoMinadoGame() {
           }
           onSettings={joined && isHost ? () => setIsSettingsDialogOpen(true) : undefined}
           room={joined ? { pin: room, players: roster } : undefined}
+          leave={joined ? { host: isHost, onConfirm: isHost ? closeRoom : leaveRoom } : undefined}
         />
         {!joined ? (
           <>
@@ -447,8 +448,16 @@ export function CampoMinadoGame() {
                 <GameButton variant={players.find(p => p.id === playerId.current)?.ready ? "success" : "info"} onClick={toggleReady} disabled={!players.find(p => p.id === playerId.current)?.ready && myBombs.length < bombsPerPlayer}>
                   {players.find(p => p.id === playerId.current)?.ready ? "Pronto!" : "Marcar como pronto"}
                 </GameButton>
-                <GameButton variant="special" onClick={leaveRoom}><LogOut /> Sair da sala</GameButton>
               </GameActions>
+              <RoomDirectory
+                game="campo-minado"
+                isHosting={isHost}
+                showList={false}
+                hostName={profile.name}
+                hostAvatar={profile.avatar}
+                pin={room}
+                onJoin={() => undefined}
+              />
           </div>
         ) : gamePhase === "PLAYING" && match ? (
           <div className="flex flex-col items-center gap-4 py-8">
@@ -480,11 +489,6 @@ export function CampoMinadoGame() {
                 disabled={!isMyTurn}
               />
             </div>
-            {isHost && (
-              <GameActions className="mt-6">
-                <GameButton variant="danger" onClick={closeRoom}><X /> Encerrar sala</GameButton>
-              </GameActions>
-            )}
           </div>
         ) : (
           <Card className={setupCardClass}>
@@ -506,16 +510,11 @@ export function CampoMinadoGame() {
                   </div>
                 ))}
               </div>
-              <GameActions>
-                {isHost ? (
-                  <>
-                    <GameButton variant="game" onClick={resetGame}><RotateCcw /> Jogar novamente</GameButton>
-                    <GameButton variant="danger" onClick={closeRoom}><X /> Encerrar sala</GameButton>
-                  </>
-                ) : (
-                  <GameButton variant="special" onClick={leaveRoom}><LogOut /> Sair da sala</GameButton>
-                )}
-              </GameActions>
+              {isHost && (
+                <GameActions>
+                  <GameButton variant="game" onClick={resetGame}><RotateCcw /> Jogar novamente</GameButton>
+                </GameActions>
+              )}
             </CardContent>
           </Card>
         )}

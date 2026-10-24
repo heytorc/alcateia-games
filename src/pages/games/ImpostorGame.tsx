@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { GameIcon } from "@/components/games/GameIcon";
 
-import { Flag, RotateCcw, X, Plus, LogIn, LogOut, Play } from "lucide-react";
+import { Flag, RotateCcw, Plus, LogIn, Play } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
 
@@ -23,7 +23,7 @@ import { useGameStore } from "@/lib/store";
 import { createClientId, createRoomPin } from "@/lib/utils";
 import { JoinRoomDialog } from "@/components/games/JoinRoomDialog";
 import { roomDescriptionClass, roomHeadingClass, roomPageClass } from "@/components/games/room-styles";
-import { useRestoreRoom } from "@/hooks/useRestoreRoom";
+import { isHostRoom, setHostRoom, useRestoreRoom } from "@/hooks/useRestoreRoom";
 import { ErrorPage } from "@/components/ErrorPage";
 import { useOnline } from "@/hooks/useOnline";
 import { GameButton } from "@/components/games/GameButton";
@@ -65,6 +65,7 @@ export function ImpostorGame() {
   useRestoreRoom("impostor", (restoredPin) => {
     setRoom(restoredPin);
     setJoined(true);
+    setIsHost(isHostRoom("impostor", restoredPin));
   });
 
   useEffect(() => {
@@ -124,6 +125,7 @@ export function ImpostorGame() {
     const newPin = createRoomPin();
     setRoom(newPin);
     setIsHost(true);
+    setHostRoom("impostor", newPin, true);
     setJoined(true);
     navigate(`?pin=${newPin}`);
   };
@@ -169,9 +171,10 @@ export function ImpostorGame() {
     const channel = channelRef.current;
     if (channel) await channel.send({ type: "broadcast", event: "room-closed", payload: {} });
     if (channel && supabase) await supabase.removeChannel(channel);
+    setHostRoom("impostor", room, false);
     setJoined(false);
     setGamePhase("LOBBY");
-    setRoomClosed(true);
+    navigate({ search: "" }, { replace: true });
     setLastRoom(null, null);
     usedWords.current = [];
   };
@@ -181,7 +184,7 @@ export function ImpostorGame() {
     if (channel && supabase) await supabase.removeChannel(channel);
     setJoined(false);
     setLastRoom(null, null);
-    navigate("/");
+    navigate({ search: "" }, { replace: true });
   };
   const joinListedRoom = (listedRoom: string) => {
     if (!profile.name.trim()) return;
@@ -228,6 +231,7 @@ export function ImpostorGame() {
             )
           }
           room={joined ? { pin: room, players: roster } : undefined}
+          leave={joined ? { host: isHost, onConfirm: isHost ? closeRoom : leaveRoom } : undefined}
         />
         {!joined ? (
           <>
@@ -273,19 +277,9 @@ export function ImpostorGame() {
                   <GameButton variant="game" onClick={start}>
                     <Play /> Começar rodada
                   </GameButton>
-                  <GameButton variant="danger" onClick={closeRoom}>
-                   <X /> Encerrar sala
-                  </GameButton>
                 </GameActions>
               ) : (
-                <>
-                  <GameActions>
-                    <GameButton variant="special" onClick={leaveRoom}>
-                     <LogOut /> Sair da sala
-                    </GameButton>
-                  </GameActions>
-                  <p className={roomDescriptionClass}>Aguarde o anfitrião iniciar a rodada.</p>
-                </>
+                <p className={roomDescriptionClass}>Aguarde o anfitrião iniciar a rodada.</p>
               )}
               <RoomDirectory
                 game="impostor"
@@ -364,16 +358,6 @@ export function ImpostorGame() {
                   <GameButton variant="info" onClick={start} className="sm:order-1">
                     <RotateCcw /> Nova rodada
                   </GameButton>
-                  <GameButton variant="danger" onClick={closeRoom} className="sm:order-3">
-                   <X /> Encerrar sala
-                  </GameButton>
-                </GameActions>
-              )}
-              {!isHost && (
-                <GameActions>
-                  <GameButton variant="special" onClick={leaveRoom}>
-                   <LogOut /> Sair da sala
-                  </GameButton>
                 </GameActions>
               )}
             </CardContent>
@@ -408,16 +392,6 @@ export function ImpostorGame() {
                 <GameActions>
                   <GameButton variant="game" onClick={start}>
                     <RotateCcw /> Nova rodada
-                  </GameButton>
-                  <GameButton variant="danger" onClick={closeRoom}>
-                   <X /> Encerrar sala
-                  </GameButton>
-                </GameActions>
-              )}
-              {!isHost && (
-                <GameActions>
-                  <GameButton variant="special" onClick={leaveRoom}>
-                   <LogOut /> Sair da sala
                   </GameButton>
                 </GameActions>
               )}

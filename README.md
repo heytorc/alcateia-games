@@ -9,7 +9,7 @@ Hub de jogos rápidos, mobile-first e instalável como PWA, no estilo "Neon Arca
 - **Sorteio de números:** quantidade de dígitos configurável e resultados sem repetição na sessão ativa.
 - **Mega senha:** gire o seletor de canais da TV para sortear palavras únicas do catálogo local e preserva o histórico entre sessões até ser reiniciado.
 - **Impostor:** sala multiplayer com uma palavra secreta, um impostor por rodada, votação, nova rodada pelo anfitrião e encerramento da sala.
-- **Tempo certo:** sala multiplayer em que cada participante inicia e pausa seu cronômetro (toque no painel digital de LED, no formato mm:ss:cc) para atingir o tempo alvo. O desvio acumulado decide o pódio final; o anfitrião define rodadas, tempo máximo, precisão e desfoque opcional do cronômetro.
+- **Tempo certo:** sala multiplayer em que cada participante inicia e pausa seu cronômetro (toque no painel digital de LED, no formato mm:ss:cc) para atingir o tempo alvo. O desvio acumulado decide o pódio final; o anfitrião define rodadas, tempo máximo, precisão e se o cronômetro mostra o tempo enquanto roda ("Ver tempo").
 - **Campo minado:** sala multiplayer em grade (padrão 6×10) em que os jogadores têm vidas e revelam casas por turnos, em rodadas com ordem sorteada a cada rodada; cada bomba atingida custa uma vida. Vence o último com vida; se as casas seguras acabarem com mais de um vivo, vence quem tiver mais vidas (iguais = empate). O anfitrião configura grade, vidas e bombas. _Em evolução:_ hoje o mapa de bombas é montado pelo anfitrião (com sorteio para os demais) e transmitido a todos.
 
 ## Perfil e salas
@@ -66,7 +66,7 @@ Perfil, avatares personalizados, transição de página, configurações, prefer
 src/
   main.tsx, App.tsx, styles.css   entrada, rotas/transição e tema
   pages/            HomePage e pages/games/ (um arquivo por jogo)
-  components/       Shell, GameHeader, ErrorPage, BottomSheet, NeonSlider, IconCounter, diálogos…; games/ (GameButton, DrawStage, DigitalTimer, ScoreCards, ChannelKnob, JoinRoomDialog, RoomDirectory…); ui/ = shadcn
+  components/       Shell, GameHeader, ErrorPage, BottomSheet, NeonSlider, IconCounter, diálogos…; games/ (GameButton, DrawStage, DigitalTimer, PartialPodium, ChannelKnob, JoinRoomDialog, RoomDirectory…); ui/ = shadcn
   hooks/            useMediaQuery, useOnline, useRestoreRoom
   lib/              store (Zustand), realtime (Supabase), audio, utils (+ testes), regras do Campo Minado
   constants/        catálogos: games, palavras do Impostor e da Mega senha
@@ -117,7 +117,7 @@ Sem essas variáveis, os jogos multiplayer exibem a tela "Salas online fora do a
 
 Presence mantém a lista de jogadores em cada canal. Como os eventos partem dos clientes, não há garantia de sigilo ou anti-trapaça (por exemplo, a palavra do Impostor é transmitida a todos os participantes).
 
-**Tempo certo:** quem cria a sala define entre 1 e 20 rodadas (5 por padrão), o tempo máximo sorteável (5 a 120 segundos), a precisão do alvo (segundos ou centésimos, exibidos com duas casas) e o desfoque do cronômetro. Os tempos-alvo não se repetem durante a mesma partida. A rodada só avança após todos os participantes finalizarem suas tentativas. O criador pode encerrar a sala, desconectando os participantes.
+**Tempo certo:** quem cria a sala define entre 1 e 20 rodadas (5 por padrão), o tempo máximo sorteável (5 a 120 segundos), a precisão do alvo (segundos ou centésimos, exibidos com duas casas) e se o cronômetro mostra o tempo enquanto roda ("Ver tempo"). Os tempos-alvo não se repetem durante a mesma partida. A rodada só avança após todos os participantes finalizarem suas tentativas. O criador pode encerrar a sala, desconectando os participantes.
 
 **Impostor:** o criador pode sortear uma nova rodada com nova palavra e novo impostor, ou encerrar a sala para todos os participantes.
 

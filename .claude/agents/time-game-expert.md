@@ -12,7 +12,8 @@ Você é especialista no **Tempo Certo** (rota `/time`). O arquivo fica em `src/
 ## Protocolo (canal `time-game:<pin>`)
 - **Presence:** `{name, avatar, pin?, roundStart?}`; o `roundStart` ajuda quem entra no meio.
 - Telas de erro (`ErrorPage`): `multiplayer`, `offline` e `sala` (sala encerrada), como nos demais jogos online.
-- Tela da rodada: `LedSign` "1/5", tempo alvo, `ScoreCards` (placar no topo, cards com rolagem horizontal) e `DigitalTimer` (painel LED de sete segmentos em SVG, mm:ss:cc, que é o botão; o desfoque opcional vale para os dígitos; a dica "Toque para iniciar/parar" fica dentro do painel e o resultado só é anunciado para leitores de tela). Configuração em `BottomSheet`.
+- Entre rodadas: o host clica em "Próxima rodada", que emite `podium-show` (rodada + placares acumulados) e mostra a todos o `PartialPodium` (reordena com `motion layout`, da ordem anterior para a atual, com setas de quem subiu/desceu); só então o host clica em "Continuar" (`startRound`). A última rodada vai direto ao pódio final.
+- Tela da rodada: `LedSign` "1/5", tempo alvo, `DigitalTimer` (painel LED de sete segmentos em SVG, mm:ss:cc, que é o botão; a configuração "Ver tempo" desligada troca os dígitos por `--:--:--` enquanto roda; a dica "Toque para iniciar/parar" fica dentro do painel e o resultado só é anunciado para leitores de tela). Configuração em `BottomSheet`.
 - No celular, a linha "Rodada / Tempo alvo" divide a largura (`flex-1 min-w-0`) e a fonte do tempo alvo usa `clamp`; confira em 375 px ao mexer.
 - **Broadcast:** `round-start` (alvo, rodada, config) · `timer-start {id}` · `round-score` (resultado de um jogador) · `game-finished` · `room-closed`.
 
@@ -21,7 +22,7 @@ Você é especialista no **Tempo Certo** (rota `/time`). O arquivo fica em `src/
 - Alvos **não se repetem** na partida; não peça mais rodadas que alvos disponíveis.
 - Tempo medido com `performance.now()` (nunca `Date.now()` para o cronômetro). O vencedor é o menor **desvio acumulado**.
 - A rodada só avança quando todos os participantes concluem.
-- Desfoque opcional do cronômetro: `blur` aplicado só enquanto roda; preserve a legibilidade ao parar.
+- "Ver tempo" (campo `hideTargetOnStart`, invertido na UI): desligado, o cronômetro mostra `--:--:--` só enquanto roda; ao parar, mostra o tempo real.
 
 ## Como verificar
 Duas abas: configurar 2 rodadas, jogar, conferir placar e pódio, encerrar a sala. `npm run lint && npm test`.
