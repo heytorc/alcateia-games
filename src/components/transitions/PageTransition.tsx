@@ -106,7 +106,7 @@ export const transitions: Record<TransitionId, Transition> = {
     ),
   },
   line: {
-    name: "Linha que trava e expande",
+    name: "Abdução",
     swapMs: 1200,
     totalMs: 1700,
     render: () => (

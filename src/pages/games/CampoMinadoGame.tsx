@@ -2,17 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { GameIcon } from "@/components/games/GameIcon";
 import { RotateCcw, X, Plus, LogIn, LogOut, Play } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { GameActions, GameDialogFooter, GameHeader, Shell } from "@/components";
+import { GameActions, GameDialogFooter, GameHeader, Shell, Switch } from "@/components";
 import { RoomDirectory } from "@/components/games/RoomDirectory";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/realtime";
 import { useGameStore } from "@/lib/store";
 import { playDigSound, playExplosionSound, playTickSound } from "@/lib/audio";
 import { createClientId, createRoomPin } from "@/lib/utils";
+import { BottomSheet } from "@/components/BottomSheet";
+import { IconCounter } from "@/components/IconCounter";
+import { NeonSlider } from "@/components/NeonSlider";
 import { JoinRoomDialog } from "@/components/games/JoinRoomDialog";
 import { roomDescriptionClass, roomHeadingClass, roomPageClass } from "@/components/games/room-styles";
 import { useRestoreRoom } from "@/hooks/useRestoreRoom";
@@ -406,8 +406,7 @@ export function CampoMinadoGame() {
             <JoinRoomDialog open={isJoinDialogOpen} onOpenChange={setIsJoinDialogOpen} pin={room} onPinChange={setRoom} onConfirm={join} />
           </>
         ) : gamePhase === "LOBBY" ? (
-          <Card className={setupCardClass}>
-            <CardContent className="flex w-full flex-col items-center gap-5">
+          <div className="flex w-full flex-col items-center gap-5 py-8 text-center">
               <h2 className={roomHeadingClass}>Lobby de Bombas</h2>
               <p className={roomDescriptionClass}>Distribua suas {bombsPerPlayer} bombas no campo e clique em Pronto.</p>
 
@@ -427,8 +426,9 @@ export function CampoMinadoGame() {
                 ))}
               </div>
 
-              <div className="w-full overflow-x-auto flex justify-center p-1">
+              <div className="w-full overflow-x-auto p-1">
                 <CampoMinadoGrid
+                  key={`${gridSize.rows}x${gridSize.cols}`}
                   rows={gridSize.rows}
                   cols={gridSize.cols}
                   phase="LOBBY"
@@ -449,8 +449,7 @@ export function CampoMinadoGame() {
                 </GameButton>
                 <GameButton variant="special" onClick={leaveRoom}><LogOut /> Sair da sala</GameButton>
               </GameActions>
-            </CardContent>
-          </Card>
+          </div>
         ) : gamePhase === "PLAYING" && match ? (
           <div className="flex flex-col items-center gap-4 py-8">
             <h2 className="neon-text font-game-pixel text-2xl tracking-[.08em]">RODADA {match.round}</h2>
@@ -468,8 +467,9 @@ export function CampoMinadoGame() {
               shuffling={shuffling}
               onShuffleDone={() => setSettledRound(match.round)}
             />
-            <div className="w-full overflow-x-auto flex justify-center p-1">
+            <div className="w-full overflow-x-auto p-1">
               <CampoMinadoGrid
+                key={`${gridSize.rows}x${gridSize.cols}`}
                 rows={gridSize.rows}
                 cols={gridSize.cols}
                 phase="PLAYING"
@@ -520,48 +520,28 @@ export function CampoMinadoGame() {
           </Card>
         )}
       </main>
-      <Dialog open={isSettingsDialogOpen} onOpenChange={setIsSettingsDialogOpen}>
-        <DialogContent className="max-h-[min(700px,90vh)] w-[min(450px,calc(100%-32px))] overflow-auto rounded-[6px] border-2 border-[#4a34a8] bg-[#150d33] p-6 text-white">
-          <DialogHeader>
-            <DialogTitle className="font-game-pixel text-[22px] font-bold">Configurações da Sala</DialogTitle>
-            <DialogDescription className="text-[#9b97b2]">Ajuste as regras do campo minado para todos os jogadores.</DialogDescription>
-          </DialogHeader>
-          <div className="my-6 grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-[#9b97b2] uppercase tracking-widest">Linhas</Label>
-              <Input type="number" value={gridSize.rows} onChange={(e) => setGridSize(p => ({ ...p, rows: parseInt(e.target.value) || 1 }))} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-[#9b97b2] uppercase tracking-widest">Colunas</Label>
-              <Input type="number" value={gridSize.cols} onChange={(e) => setGridSize(p => ({ ...p, cols: parseInt(e.target.value) || 1 }))} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-[#9b97b2] uppercase tracking-widest">Vidas Máx.</Label>
-              <Input type="number" value={maxLives} onChange={(e) => setMaxLives(parseInt(e.target.value) || 1)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs text-[#9b97b2] uppercase tracking-widest">Bombas/Player</Label>
-              <Input type="number" value={bombsPerPlayer} onChange={(e) => setBombsPerPlayer(parseInt(e.target.value) || 1)} />
-            </div>
-            <div className="flex items-center gap-2 col-span-2 justify-center py-2">
-              <input
-                type="checkbox"
-                id="show-my-bombs"
-                checked={showMyBombs}
-                onChange={(e) => setShowMyBombs(e.target.checked)}
-                className="w-4 h-4 rounded bg-panel-dark border-white/20 text-brand-gold focus:ring-brand-gold"
-              />
-              <Label htmlFor="show-my-bombs" className="text-sm text-white cursor-pointer">
-                Exibir minhas bombas no campo
-              </Label>
-            </div>
-          </div>
+      <BottomSheet
+        open={isSettingsDialogOpen}
+        onOpenChange={setIsSettingsDialogOpen}
+        title="Configurações da sala"
+        description="Ajuste as regras do campo minado para todos os jogadores."
+        footer={
           <GameDialogFooter>
             <GameButton variant="special" onClick={() => setIsSettingsDialogOpen(false)}>Cancelar</GameButton>
             <GameButton variant="game" onClick={() => { updateSettings(); setIsSettingsDialogOpen(false); }}>Salvar alterações</GameButton>
           </GameDialogFooter>
-        </DialogContent>
-      </Dialog>
+        }>
+        <div className="flex flex-col gap-6 py-2">
+          <NeonSlider label="Linhas" value={gridSize.rows} min={1} max={20} onChange={(rows) => setGridSize((p) => ({ ...p, rows }))} />
+          <NeonSlider label="Colunas" value={gridSize.cols} min={1} max={20} onChange={(cols) => setGridSize((p) => ({ ...p, cols }))} />
+          <IconCounter label="Vidas" value={maxLives} min={1} max={10} onChange={setMaxLives} icon={<GameIcon id="vida" size={32} />} />
+          <IconCounter label="Bombas" value={bombsPerPlayer} min={1} max={10} onChange={setBombsPerPlayer} icon={<GameIcon id="campo-minado" size={32} />} />
+          <div className="flex items-center justify-between gap-4 border-t border-white/9 pt-4">
+            <span id="show-my-bombs" className="text-base text-[#c2b9d1]">Exibir minhas bombas no campo</span>
+            <Switch checked={showMyBombs} onChange={setShowMyBombs} />
+          </div>
+        </div>
+      </BottomSheet>
     </Shell>
 
   );

@@ -8,6 +8,7 @@ Você é especialista no **Campo Minado** (rota `/campo-minado`; id `campo-minad
 ## Arquivos-chave
 - `src/pages/games/CampoMinadoGame.tsx`: lobby, configuração, partida, resultados.
 - `src/lib/campo-minado-rules.ts` (+ teste): reducer puro da partida (`createMatch`, `applyClick`, `forfeit`): vez, rodadas, vidas e resultado.
+- Configuração da sala em `BottomSheet`: `NeonSlider` (linhas/colunas, 1–20), `IconCounter` (vidas e bombas, 1–10) e `Switch` (exibir bombas). O campo (`CampoMinadoGrid`) ocupa a largura toda (células de 20 a 56 px; rola na horizontal se não couber) e "cresce" em diagonal ao montar; `key` por `linhasxcolunas` refaz a animação.
 - Telas de erro via `ErrorPage` (`multiplayer`, `offline`, `sala`); a entrada de sala usa `JoinRoomDialog`, `useRestoreRoom` e `createRoomPin`.
 - `src/components/games/CampoMinadoGrid.tsx` (`CellStatus`: `HIDDEN | REVEALED | EXPLODED`), `PlayerLivesBar.tsx`, `OrientationGuide.tsx` (sugere paisagem em telas pequenas), `GameButton.tsx`.
 

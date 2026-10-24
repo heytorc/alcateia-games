@@ -10,6 +10,7 @@ Você guarda a **identidade visual e a acessibilidade** do Alcateia Games. Respo
 - `src/components/games/GameButton.tsx`: botão neon (variantes `game`, `info`, `special`, `warning`, `danger`, `success`; ver papéis no `CLAUDE.md`) com borda e brilho da cor `--btn-*`. Use-o em vez de recriar o efeito, inclusive em diálogos (perfil, salas).
 - `GameCard`, `GameLayout`, `History`, `Shell`, `GameHeader`: estrutura comum das telas. `DrawStage` (palco de sorteio), `JoinRoomDialog` e `room-styles.ts` (telas de sala) concentram trechos antes repetidos: ajuste-os ali, não em cada jogo.
 - Ícones/banner de compartilhamento: `public/` (`favicon.*`, `apple-touch-icon.png`, `pwa-*.png`, `og-image.png`), com o lobo em contorno neon e degradê vertical (mocks em `docs/mocks/`, local, fora do git); `theme_color` do PWA e do `<meta>` em `index.html` é `#151329`.
+- Painéis: formulários longos usam `BottomSheet` (não `Dialog`); controles novos: `NeonSlider`, `IconCounter`, `ChannelKnob`, `DigitalTimer`, `ScoreCards`.
 - Também compartilhados: `ErrorPage` (404/500/offline/sala/503, com `.err-code`/`.err-wolf` no CSS), `TransitionPicker` (perfil), `ScrollToTop` e `Logo` (usa `public/logo-wolf.svg`). Brilho com `filter` (`.neon-on`) precisa de folga na caixa, senão é cortado.
 - `src/components/ui/`: primitivos shadcn (Radix); preserve acessibilidade ao estilizar.
 

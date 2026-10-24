@@ -8,13 +8,6 @@ import { celebrate, GameActions, GameDialogFooter, GameHeader, NumberStepper, Sh
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import { playStopwatchStartSound, playStopwatchStopSound, playSuccessHorn } from "@/lib/audio";
 import { supabase } from "@/lib/realtime";
 import { createClientId, drawUniqueInteger, formatStopwatch, createRoomPin } from "@/lib/utils";
@@ -28,6 +21,9 @@ import { ErrorPage } from "@/components/ErrorPage";
 import { useOnline } from "@/hooks/useOnline";
 import { GameButton } from "@/components/games/GameButton";
 import { LedSign } from "@/components/games/LedSign";
+import { ScoreCards } from "@/components/games/ScoreCards";
+import { DigitalTimer } from "@/components/games/DigitalTimer";
+import { BottomSheet } from "@/components/BottomSheet";
 import type { PlayerListItem } from "@/components/games/PlayerList";
 import { WolfFieldLobby } from "@/components/games/WolfFieldLobby";
 
@@ -87,11 +83,11 @@ export function TimeGame() {
   const navigate = useNavigate();
   const [room, setRoom] = useState("");
   const [roundCount, setRoundCount] = useState(5);
-  const [maxTargetSeconds, setMaxTargetSeconds] = useState(30);
+  const [maxTargetSeconds, setMaxTargetSeconds] = useState(10);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [roundCountInput, setRoundCountInput] = useState("5");
-  const [maxTargetSecondsInput, setMaxTargetSecondsInput] = useState("30");
+  const [maxTargetSecondsInput, setMaxTargetSecondsInput] = useState("10");
   const [configErrors, setConfigErrors] = useState<Partial<Record<RoomConfigField, string>>>({});
   const [hideTargetOnStart, setHideTargetOnStart] = useState(false);
   const [targetPrecision, setTargetPrecision] = useState<TargetPrecision>("seconds");
@@ -451,7 +447,7 @@ export function TimeGame() {
   const configForm = (
             <div className="mb-4">
         <div className="my-3 w-full">
-          <Label className="justify-between text-sm font-bold text-[#c2b9d1]">
+          <Label className="justify-between text-base font-bold text-[#c2b9d1]">
             Rodadas{" "}
             <NumberStepper
               ariaLabel="Total de rodadas"
@@ -471,7 +467,7 @@ export function TimeGame() {
           )}
         </div>
         <div className="my-3 w-full">
-          <Label className="justify-between text-sm font-bold text-[#c2b9d1]">
+          <Label className="justify-between text-base font-bold text-[#c2b9d1]">
             Tempo máximo{" "}
             <NumberStepper
               ariaLabel="Tempo máximo em segundos"
@@ -490,7 +486,7 @@ export function TimeGame() {
             </small>
           )}
         </div>
-        <div className="my-3 flex w-full flex-wrap items-center justify-between gap-2 text-sm font-bold text-[#c2b9d1]">
+        <div className="my-3 flex w-full flex-wrap items-center justify-between gap-2 text-base font-bold text-[#c2b9d1]">
           <span>Precisão do tempo alvo</span>
           <div className="flex w-full overflow-hidden rounded-md">
             <GameButton
@@ -511,7 +507,7 @@ export function TimeGame() {
             </GameButton>
           </div>
         </div>
-        <div className="my-[5px] mb-3.5 flex w-full items-center justify-between text-sm font-bold text-[#c2b9d1]">
+        <div className="my-[5px] mb-3.5 flex w-full items-center justify-between text-base font-bold text-[#c2b9d1]">
           <span>Embaçar cronômetro ao iniciar</span>
           <Switch checked={hideTargetOnStart} onChange={setHideTargetOnStart} />
         </div>
@@ -586,15 +582,12 @@ export function TimeGame() {
               />
             )}
           </section>
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogContent className="max-h-[min(700px,90vh)] w-[min(450px,calc(100%-32px))] sm:max-w-[450px] overflow-auto rounded-[6px] border-2 border-[#4a34a8] bg-[#150d33] p-6 text-white shadow-[0_20px_70px_rgba(0,0,0,.4)]">
-              <DialogHeader>
-                <DialogTitle className="font-game-pixel text-[22px] font-bold">Criar sala</DialogTitle>
-                <DialogDescription className="my-3 text-xs leading-[1.5] text-[#9b97b2]">
-                  Defina as regras da partida antes de chamar a alcateia.
-                </DialogDescription>
-              </DialogHeader>
-              {configForm}
+          <BottomSheet
+            open={createDialogOpen}
+            onOpenChange={setCreateDialogOpen}
+            title="Criar sala"
+            description="Defina as regras da partida antes de chamar a alcateia."
+            footer={
               <GameDialogFooter>
                 <GameButton variant="special" onClick={() => setCreateDialogOpen(false)}>
                   Cancelar
@@ -603,8 +596,9 @@ export function TimeGame() {
                   Criar sala
                 </GameButton>
               </GameDialogFooter>
-            </DialogContent>
-          </Dialog>
+            }>
+            {configForm}
+          </BottomSheet>
           <JoinRoomDialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen} pin={room} onPinChange={setRoom} onConfirm={joinRoom} />
         </main>
       </Shell>
@@ -695,7 +689,7 @@ export function TimeGame() {
               {isHost ? (
                 <GameActions>
                   <GameButton variant="game" onClick={() => startRound(1)}>
-                    <Play /> Iniciar {roundCount} rodadas
+                    <Play /> Iniciar
                   </GameButton>
                   <GameButton variant="danger" onClick={closeRoom}>
                     <X /> Encerrar sala
@@ -722,15 +716,12 @@ export function TimeGame() {
                 onJoin={() => undefined}
               />
             </div>
-          <Dialog open={settingsOpen} onOpenChange={(open) => !open && closeSettings()}>
-            <DialogContent className="max-h-[min(700px,90vh)] w-[min(450px,calc(100%-32px))] sm:max-w-[450px] overflow-auto rounded-[6px] border-2 border-[#4a34a8] bg-[#150d33] p-6 text-white shadow-[0_20px_70px_rgba(0,0,0,.4)]">
-              <DialogHeader>
-                <DialogTitle className="font-game-pixel text-[22px] font-bold">Configurações da sala</DialogTitle>
-                <DialogDescription className="my-3 text-xs leading-[1.5] text-[#9b97b2]">
-                  As mudanças valem para todos os jogadores da sala.
-                </DialogDescription>
-              </DialogHeader>
-              {configForm}
+          <BottomSheet
+            open={settingsOpen}
+            onOpenChange={(open) => !open && closeSettings()}
+            title="Configurações da sala"
+            description="As mudanças valem para todos os jogadores da sala."
+            footer={
               <GameDialogFooter>
                 <GameButton variant="special" onClick={closeSettings}>
                   Cancelar
@@ -739,8 +730,9 @@ export function TimeGame() {
                   Salvar alterações
                 </GameButton>
               </GameDialogFooter>
-            </DialogContent>
-          </Dialog>
+            }>
+            {configForm}
+          </BottomSheet>
         </main>
       </Shell>
     );
@@ -750,10 +742,13 @@ export function TimeGame() {
       <main className={roomPageClass}>
         <GameHeader title="Tempo certo" room={{ pin: room, players: roster }} />
         <section className="mx-auto my-[25px] mb-[60px] flex w-full max-w-[700px] flex-col items-center gap-[18px]">
-          <div className="mb-8 flex w-full flex-row items-end justify-between gap-4 sm:gap-8">
-            <LedSign className="min-w-0 flex-1 text-center">
-              Rodada {round} de {roundCount}
-            </LedSign>
+          <div className="flex w-full flex-row items-end justify-between gap-4 sm:gap-8">
+            <div className="flex min-w-0 flex-1 flex-col items-center gap-3 text-center">
+              <span className="text-base text-[#c9c4dd]">Rodada</span>
+              <LedSign className="w-full text-center">
+                {round}/{roundCount}
+              </LedSign>
+            </div>
             <div className="flex min-w-0 flex-1 flex-col items-center gap-3 rounded-md text-center">
               <span className="text-base text-[#c9c4dd]">Tempo alvo</span>
               <div className="w-full max-w-[280px] rounded-sm bg-[#ffe14a] px-3 py-4 font-heading text-[clamp(16px,5.2vw,30px)] font-bold tracking-normal text-[#12040a] shadow-[6px_6px_0_#ff4552] sm:px-7 sm:tracking-wide">
@@ -761,65 +756,26 @@ export function TimeGame() {
               </div>
             </div>
           </div>
-          <GameButton
-            variant={roundResult !== null ? "success" : running ? "info" : "game"}
-            className="h-auto min-h-[300px] w-full flex-col gap-[18px] rounded-md disabled:pointer-events-auto disabled:cursor-default"
-            onClick={toggleTimer}
-            disabled={roundResult !== null}>
-            <time
-              className={`font-heading text-[clamp(47px,11vw,92px)] leading-none tracking-[.04em] ${hideTargetOnStart && running ? "select-none blur-[20px]" : ""}`}>
-              {formatStopwatch(elapsedMs)}
-            </time>
-            <span className="text-sm font-extrabold opacity-80">
-              {roundResult === null ? (
-                running ? (
-                  "Toque para parar"
-                ) : (
-                  "Toque para iniciar"
-                )
-              ) : exactHit ? (
-                <>
-                  TEMPO EXATO! <GameIcon id="festa" size={20} className="inline-block align-middle" />
-                </>
-              ) : (
-                `Excedente: ${formatStopwatch(roundResult)}`
-              )}
-            </span>
-          </GameButton>
-          {roundResult !== null && (
-            <p
-              className={`m-0 text-sm text-[#bdb7ce] ${exactHit ? "animate-[tada_.7s_both] font-extrabold text-[#fdcb6e]" : ""}`}>
-              {exactHit ? "TADA! Você acertou o tempo exato!" : `Seu cronômetro marcou ${formatStopwatch(elapsedMs)}.`}
-            </p>
-          )}
-          <Card className="w-full p-0">
-            <CardContent className="p-[18px]">
-              <span className="mb-2.5 block text-xs font-extrabold tracking-[.06em] text-[#bbb5d3]">
-                PLACAR ACUMULADO
-              </span>
-              {Object.entries(players).map(([id, player]) => {
-                const score = scores.find((item) => item.id === id);
-                const status = submitted.includes(id)
-                  ? "Finalizou"
-                  : startedPlayers.includes(id)
-                    ? "Cronômetro em andamento"
-                    : "Ainda não iniciou";
-                return (
-                  <div className="flex justify-between border-t border-t-white/[.09] px-0.5 py-2.5" key={id}>
-                    <strong>
-                      {player.avatar} {player.name}
-                    </strong>
-                    <span
-                      className={
-                        submitted.includes(id) ? "font-heading font-bold text-[#fdcb6e]" : "text-xs text-[#a39dbb]"
-                      }>
-                      {score ? formatStopwatch(score.excessMs) : status}
-                    </span>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
+          <ScoreCards
+            selfId={playerId.current}
+            players={Object.entries(players).map(([id, player]) => ({
+              id,
+              ...player,
+              excessMs: scores.find((item) => item.id === id)?.excessMs,
+              status: submitted.includes(id) ? "Finalizou" : startedPlayers.includes(id) ? "Jogando" : "Aguardando",
+            }))}
+          />
+          <DigitalTimer
+            elapsedMs={elapsedMs}
+            running={running}
+            finished={roundResult !== null}
+            exact={exactHit}
+            blurReadout={hideTargetOnStart && running}
+            onPress={toggleTimer}
+          />
+          <p className="sr-only" aria-live="polite">
+            {roundResult !== null && `Seu cronômetro marcou ${formatStopwatch(elapsedMs)}.`}
+          </p>
           {isHost && (
             <>
               <GameActions>

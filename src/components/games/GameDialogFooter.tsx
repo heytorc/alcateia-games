@@ -12,7 +12,7 @@ function GameDialogFooter({
     <DialogFooter
       {...props}
       className={cn(
-        "m-0 flex-row justify-end gap-[9px] border-0 bg-transparent p-0",
+        "m-0 flex-row justify-end gap-[9px] border-0 bg-transparent p-0 max-[480px]:flex-col-reverse max-[480px]:[&>*]:w-full",
         className,
       )}
     />

@@ -7,9 +7,9 @@ Hub de jogos rápidos, mobile-first e instalável como PWA, no estilo "Neon Arca
 - **Sorteio de letras:** histórico em grade, cores alternadas, animação, curto-circuito na borda, som de roleta e contagem regressiva opcional com campainha ao terminar.
 - **Sorteio de peso:** faixa configurável, seletor entre gramas e quilos e resultados sem repetição na sessão ativa.
 - **Sorteio de números:** quantidade de dígitos configurável e resultados sem repetição na sessão ativa.
-- **Mega senha:** sorteia palavras únicas do catálogo local e preserva o histórico entre sessões até ser reiniciado.
+- **Mega senha:** gire o seletor de canais da TV para sortear palavras únicas do catálogo local e preserva o histórico entre sessões até ser reiniciado.
 - **Impostor:** sala multiplayer com uma palavra secreta, um impostor por rodada, votação, nova rodada pelo anfitrião e encerramento da sala.
-- **Tempo certo:** sala multiplayer em que cada participante inicia e pausa seu cronômetro para atingir o tempo alvo. O desvio acumulado decide o pódio final; o anfitrião define rodadas, tempo máximo, precisão e desfoque opcional do cronômetro.
+- **Tempo certo:** sala multiplayer em que cada participante inicia e pausa seu cronômetro (toque no painel digital de LED, no formato mm:ss:cc) para atingir o tempo alvo. O desvio acumulado decide o pódio final; o anfitrião define rodadas, tempo máximo, precisão e desfoque opcional do cronômetro.
 - **Campo minado:** sala multiplayer em grade (padrão 6×10) em que os jogadores têm vidas e revelam casas por turnos, em rodadas com ordem sorteada a cada rodada; cada bomba atingida custa uma vida. Vence o último com vida; se as casas seguras acabarem com mais de um vivo, vence quem tiver mais vidas (iguais = empate). O anfitrião configura grade, vidas e bombas. _Em evolução:_ hoje o mapa de bombas é montado pelo anfitrião (com sorteio para os demais) e transmitido a todos.
 
 ## Perfil e salas
@@ -26,7 +26,7 @@ Ao trocar de rota, um overlay neon cobre a tela e a nova página aparece por bai
 
 | id | Efeito |
 |---|---|
-| `line` | Linha rosa trava no centro e expande na horizontal até a tela toda |
+| `line` ("Abdução") | Linha rosa trava no centro e expande na horizontal até a tela toda |
 | `netflix` | Fitas de luz em leque e um “A” que atravessa a tela, como a abertura da Netflix |
 | `tunnel` | Túnel de grade synthwave |
 | `sign` | Letreiro neon piscando com flash RGB |
@@ -66,7 +66,7 @@ Perfil, avatares personalizados, transição de página, configurações, prefer
 src/
   main.tsx, App.tsx, styles.css   entrada, rotas/transição e tema
   pages/            HomePage e pages/games/ (um arquivo por jogo)
-  components/       Shell, GameHeader, ErrorPage, diálogos…; games/ (GameButton, DrawStage, JoinRoomDialog, RoomDirectory…); ui/ = shadcn
+  components/       Shell, GameHeader, ErrorPage, BottomSheet, NeonSlider, IconCounter, diálogos…; games/ (GameButton, DrawStage, DigitalTimer, ScoreCards, ChannelKnob, JoinRoomDialog, RoomDirectory…); ui/ = shadcn
   hooks/            useMediaQuery, useOnline, useRestoreRoom
   lib/              store (Zustand), realtime (Supabase), audio, utils (+ testes), regras do Campo Minado
   constants/        catálogos: games, palavras do Impostor e da Mega senha

@@ -11,6 +11,8 @@ Você é especialista na **Mega Senha** do Alcateia Games (rota `/password`). Re
 - `src/lib/store.ts`: `usedMegaPasswordWords` (persistido), `markMegaPasswordWordsAsUsed`, `resetMegaPasswordHistory`; `settings.passwordCount` (padrão 5).
 - `src/lib/utils.ts`: `drawManyUnique`.
 
+- `ChannelKnob` (seletor rotativo; clique, arrasto ou teclado ←/→/Enter) dispara o sorteio; `TvFrame` só hospeda a tela e os controles.
+
 ## Invariantes
 - Diferente dos outros sorteios, o histórico **persiste entre sessões** (`localStorage`) até o usuário reiniciar.
 - Se restarem menos palavras que `passwordCount`, o jogo mostra erro e oferece reiniciar; não complete a rodada com palavras repetidas.

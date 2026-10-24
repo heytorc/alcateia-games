@@ -8,9 +8,9 @@ export function TransitionPicker() {
   const { transition, setTransition } = useGameStore();
 
   return (
-    <div className="mt-[18px] flex flex-col gap-2 font-game-pixel text-[10px] uppercase tracking-[.18em] text-brand-accent">
+    <div className="mt-9 flex flex-col gap-3 font-game-pixel text-[12px] uppercase tracking-[.16em] text-brand-accent">
       <span id="transition-label">Transição de página</span>
-      <div role="radiogroup" aria-labelledby="transition-label" className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+      <div role="radiogroup" aria-labelledby="transition-label" className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
         {transitionIds.map((id) => {
           const selected = transition === id;
           return (
