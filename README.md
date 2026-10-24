@@ -7,7 +7,7 @@ Hub de jogos rápidos, mobile-first e instalável como PWA, no estilo "Neon Arca
 - **Sorteio de letras:** histórico em grade, cores alternadas, animação, curto-circuito na borda, som de roleta e contagem regressiva opcional com campainha ao terminar.
 - **Sorteio de peso:** faixa configurável, seletor entre gramas e quilos e resultados sem repetição na sessão ativa.
 - **Sorteio de números:** quantidade de dígitos configurável e resultados sem repetição na sessão ativa.
-- **Mega senha:** gire o seletor de canais da TV para sortear palavras únicas do catálogo local e preserva o histórico entre sessões até ser reiniciado.
+- **Mega senha:** gire o seletor de canais da TV para sortear palavras únicas do catálogo (tabela `words` do Supabase, com cópia local para uso offline) e preserva o histórico entre sessões até ser reiniciado.
 - **Impostor:** sala multiplayer com uma palavra secreta, um impostor por rodada, votação, nova rodada pelo anfitrião e encerramento da sala.
 - **Tempo certo:** sala multiplayer em que cada participante inicia e pausa seu cronômetro (toque no painel digital de LED, no formato mm:ss:cc) para atingir o tempo alvo. O desvio acumulado decide o pódio final; o anfitrião define rodadas, tempo máximo, precisão e se o cronômetro mostra o tempo enquanto roda ("Ver tempo").
 - **Campo minado:** sala multiplayer em grade (padrão 6×10) em que os jogadores têm vidas e revelam casas por turnos, em rodadas com ordem sorteada a cada rodada; cada bomba atingida custa uma vida. Vence o último com vida; se as casas seguras acabarem com mais de um vivo, vence quem tiver mais vidas (iguais = empate). O anfitrião configura grade, vidas e bombas. _Em evolução:_ hoje o mapa de bombas é montado pelo anfitrião (com sorteio para os demais) e transmitido a todos.
@@ -69,7 +69,9 @@ src/
   components/       Shell, GameHeader, ErrorPage, BottomSheet, NeonSlider, IconCounter, diálogos…; games/ (GameButton, DrawStage, DigitalTimer, PartialPodium, ChannelKnob, JoinRoomDialog, RoomDirectory…); ui/ = shadcn
   hooks/            useMediaQuery, useOnline, useRestoreRoom
   lib/              store (Zustand), realtime (Supabase), audio, utils (+ testes), regras do Campo Minado
-  constants/        catálogos: games, palavras do Impostor e da Mega senha
+  constants/        catálogos: games, palavras do Impostor e da Mega senha (fallback e semente da tabela `words`)
+  hooks/            useWords (palavras via Supabase com cache), useOnline, useRestoreRoom, useMediaQuery
+supabase/           words.sql (tabela de palavras com RLS de leitura)
 public/             favicon, ícones PWA, og-image, ícones de jogos e GIFs dos lobos
 ```
 
@@ -99,7 +101,7 @@ Para investigar um erro no celular:
 
 ## Multiplayer e Supabase
 
-Os jogos de letras, peso, número e Mega senha funcionam sem configuração externa. Para habilitar as salas online (Impostor, Tempo certo e Campo minado), crie um projeto gratuito no Supabase, copie `.env.example` para `.env.local`, preencha os valores e rode `npm run dev` (ou passe as variáveis na linha de comando):
+Os jogos de letras, peso, número e Mega senha funcionam sem configuração externa (as palavras usam a lista embutida; com Supabase configurado, vêm da tabela `words`). Para habilitar as salas online (Impostor, Tempo certo e Campo minado), crie um projeto gratuito no Supabase, copie `.env.example` para `.env.local`, preencha os valores e rode `npm run dev` (ou passe as variáveis na linha de comando):
 
 ```bash
 VITE_SUPABASE_URL=https://seu-projeto.supabase.co \
@@ -107,7 +109,7 @@ VITE_SUPABASE_ANON_KEY=sua-chave-publica \
 npm run dev
 ```
 
-Sem essas variáveis, os jogos multiplayer exibem a tela "Salas online fora do ar" (503). Não coloque uma service role key no frontend. Nenhuma tabela é necessária: tudo usa canais efêmeros.
+Sem essas variáveis, os jogos multiplayer exibem a tela "Salas online fora do ar" (503). Não coloque uma service role key no frontend. As salas usam canais efêmeros; a única tabela é `words` (palavras do Impostor e da Mega senha), criada com `supabase/words.sql` e populada a partir de `src/constants/impostor-words.ts` e `password-words.ts`. Sem ela o app usa as listas embutidas.
 
 | Jogo | Canal | Eventos de Broadcast |
 |---|---|---|

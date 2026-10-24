@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import { GameIcon } from "@/components/games/GameIcon";
 
@@ -9,7 +9,9 @@ import { GameLayout } from "@/components/games/GameLayout";
 
 import { playTuningSound } from "@/lib/audio";
 
-import { megaPasswordWords } from "@/constants/password-words";
+import { megaPasswordWords as bundledWords } from "@/constants/password-words";
+
+import { useWords } from "@/hooks/useWords";
 
 import { useGameStore } from "@/lib/store";
 
@@ -27,6 +29,11 @@ export function PasswordGame() {
     resetMegaPasswordHistory,
     updateSettings,
   } = useGameStore();
+  const words = useWords("password", bundledWords);
+  const availableWords = useMemo(() => {
+    const used = new Set(usedMegaPasswordWords);
+    return words.filter((word) => !used.has(word));
+  }, [words, usedMegaPasswordWords]);
   const [round, setRound] = useState<string[]>([]);
   const [drawError, setDrawError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -36,7 +43,6 @@ export function PasswordGame() {
   const tuningTimer = useRef<number>();
   useEffect(() => () => window.clearTimeout(tuningTimer.current), []);
   const draw = () => {
-    const availableWords = megaPasswordWords.filter((word) => !usedMegaPasswordWords.includes(word));
     if (availableWords.length < settings.passwordCount) {
       setDrawError(
         `Restam apenas ${availableWords.length} palavras inéditas. Reinicie o histórico para sortear uma nova rodada.`,
@@ -120,7 +126,7 @@ export function PasswordGame() {
           />
         </SettingRow>
         <div className="flex items-center justify-between gap-3 border-t border-white/9 py-[14px] text-sm text-[#c2b9d1]">
-          <span>{megaPasswordWords.length - usedMegaPasswordWords.length} palavras inéditas disponíveis</span>
+          <span>{availableWords.length} palavras inéditas disponíveis</span>
           <GameButton variant="special" size="sm" type="button" onClick={resetMegaPasswordHistory} className="shrink-0">
             Reiniciar histórico
           </GameButton>

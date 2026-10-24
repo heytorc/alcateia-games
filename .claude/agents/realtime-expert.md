@@ -29,3 +29,6 @@ Você é especialista na camada **Realtime** do Alcateia Games. Responda em pt-B
 
 ## Como verificar
 Duas abas (perfis distintos): criar, descobrir pela lista, entrar por PIN, recarregar (reconexão), sair e encerrar. Conferir no DevTools que o canal é removido. `npm run lint && npm test`.
+
+## Fora do Realtime
+- A tabela `public.words` (`supabase/words.sql`, RLS só leitura) guarda as palavras de Impostor e Mega Senha e é lida por `src/hooks/useWords.ts` (cache em `localStorage`, fallback embutido). Não é canal nem Presence; mudanças nela não exigem tocar nas salas.

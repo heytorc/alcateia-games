@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 
 import { Card, CardContent } from "@/components/ui/card";
 
-import { wordBank } from "@/constants/impostor-words";
+import { wordBank as bundledWords } from "@/constants/impostor-words";
 
 import { RoomDirectory } from "@/components/games/RoomDirectory";
 
@@ -29,6 +29,7 @@ import { useOnline } from "@/hooks/useOnline";
 import { GameButton } from "@/components/games/GameButton";
 import type { PlayerListItem } from "@/components/games/PlayerList";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useWords } from "@/hooks/useWords";
 import { WolfFieldLobby } from "@/components/games/WolfFieldLobby";
 
 /** `votedId` nulo remove o voto de `voterId`. */
@@ -40,6 +41,7 @@ function applyVote(votes: Record<string, string>, voterId: string, votedId: stri
 export function ImpostorGame() {
   const configured = Boolean(supabase);
   const online = useOnline();
+  const words = useWords("impostor", bundledWords);
   const navigate = useNavigate();
   const [room, setRoom] = useState("");
   const [joined, setJoined] = useState(false);
@@ -138,8 +140,8 @@ export function ImpostorGame() {
 
     let word;
     do {
-      word = wordBank[Math.floor(Math.random() * wordBank.length)];
-    } while (usedWords.current.includes(word) && usedWords.current.length < wordBank.length);
+      word = words[Math.floor(Math.random() * words.length)];
+    } while (usedWords.current.includes(word) && usedWords.current.length < words.length);
     usedWords.current.push(word);
 
     setGamePhase("PLAYING");
