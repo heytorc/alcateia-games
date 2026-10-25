@@ -11,12 +11,13 @@ Hub de jogos rápidos, mobile-first e instalável como PWA, no estilo "Neon Arca
 - **Impostor:** sala multiplayer com uma palavra secreta, um impostor por rodada, votação, nova rodada pelo anfitrião e encerramento da sala.
 - **Tempo certo:** sala multiplayer em que cada participante inicia e pausa seu cronômetro (toque no painel digital de LED, no formato mm:ss:cc) para atingir o tempo alvo. O desvio acumulado decide o pódio final; o anfitrião define rodadas, tempo máximo, precisão e se o cronômetro mostra o tempo enquanto roda ("Ver tempo").
 - **Campo minado:** sala multiplayer em grade (padrão 6×10) em que os jogadores têm vidas e revelam casas por turnos, em rodadas com ordem sorteada a cada rodada; cada bomba atingida custa uma vida. Vence o último com vida; se as casas seguras acabarem com mais de um vivo, vence quem tiver mais vidas (iguais = empate). O anfitrião configura grade, vidas e bombas. _Em evolução:_ hoje o mapa de bombas é montado pelo anfitrião (com sorteio para os demais) e transmitido a todos.
+- **Reflexo:** sala multiplayer em que o lobo encara o pote vazio; depois de uma espera aleatória (2 a 6 s) o bife aparece e cada jogador toca na tela o mais rápido possível. Tocar antes é largada falsa (2 s de punição) e demorar mais de 1,5 s conta como lento. Vence o menor tempo de reação acumulado, com pódio parcial entre rodadas.
 
 ## Perfil e salas
 
 A tela inicial exibe a configuração de perfil até o nome ser definido. Depois disso, nome e avatar ficam disponíveis na navbar e podem ser editados por um diálogo, que também define a transição de página. Além dos avatares sugeridos, o seletor permite escolher emojis personalizados e mantém os últimos 24 emojis únicos usados no armazenamento local.
 
-Os jogos Impostor, Tempo certo e Campo minado usam esse perfil automaticamente ao entrar em uma sala.
+Os jogos Impostor, Tempo certo, Campo minado e Reflexo usam esse perfil automaticamente ao entrar em uma sala.
 
 As salas abertas aparecem na tela de entrada de cada jogo multiplayer enquanto o anfitrião permanece no lobby. A descoberta acontece por Presence no Supabase Realtime (canal `rooms:<jogo>`), sem banco de dados adicional. Uma sala é identificada por um PIN, também aceito na URL (`?pin=`), e o app lembra a última sala para reconectar.
 
@@ -53,7 +54,7 @@ Perfil, avatares personalizados, transição de página, configurações, prefer
   - `Share Tech Mono` (corpo)
   - `Silkscreen` (títulos e números, estética pixel de jogos: `.font-game-pixel`)
 - **Estado**: Zustand para configurações e preferências
-- **Realtime**: Supabase Realtime (Presence e Broadcast) para Impostor, Tempo certo e Campo minado
+- **Realtime**: Supabase Realtime (Presence e Broadcast) para Impostor, Tempo certo, Campo minado e Reflexo
 - **Animações**: `motion`
 - **Validação**: Zod para configuração de salas
 - **Utilitários**: `emoji-picker-react` (avatar personalizado) e `canvas-confetti` (celebrações)
@@ -68,7 +69,7 @@ src/
   pages/            HomePage e pages/games/ (um arquivo por jogo)
   components/       Shell, GameHeader, ErrorPage, BottomSheet, NeonSlider, IconCounter, diálogos…; games/ (GameButton, DrawStage, DigitalTimer, PartialPodium, ChannelKnob, JoinRoomDialog, RoomDirectory…); ui/ = shadcn
   hooks/            useMediaQuery, useOnline, useRestoreRoom
-  lib/              store (Zustand), realtime (Supabase), audio, utils (+ testes), regras do Campo Minado
+  lib/              store (Zustand), realtime (Supabase), audio, utils (+ testes), regras do Campo Minado e do Reflexo
   constants/        catálogos: games, palavras do Impostor e da Mega senha (fallback e semente da tabela `words`)
   hooks/            useWords (palavras via Supabase com cache), useOnline, useRestoreRoom, useMediaQuery
 supabase/           words.sql (tabela de palavras com RLS de leitura)
@@ -101,7 +102,7 @@ Para investigar um erro no celular:
 
 ## Multiplayer e Supabase
 
-Os jogos de letras, peso, número e Mega senha funcionam sem configuração externa (as palavras usam a lista embutida; com Supabase configurado, vêm da tabela `words`). Para habilitar as salas online (Impostor, Tempo certo e Campo minado), crie um projeto gratuito no Supabase, copie `.env.example` para `.env.local`, preencha os valores e rode `npm run dev` (ou passe as variáveis na linha de comando):
+Os jogos de letras, peso, número e Mega senha funcionam sem configuração externa (as palavras usam a lista embutida; com Supabase configurado, vêm da tabela `words`). Para habilitar as salas online (Impostor, Tempo certo, Campo minado e Reflexo), crie um projeto gratuito no Supabase, copie `.env.example` para `.env.local`, preencha os valores e rode `npm run dev` (ou passe as variáveis na linha de comando):
 
 ```bash
 VITE_SUPABASE_URL=https://seu-projeto.supabase.co \
@@ -116,6 +117,7 @@ Sem essas variáveis, os jogos multiplayer exibem a tela "Salas online fora do a
 | Impostor | `impostor:<pin>` | `round-start`, `vote`, `end-round`, `room-closed` |
 | Tempo certo | `time-game:<pin>` | `round-start`, `timer-start`, `round-score`, `game-finished`, `room-closed` |
 | Campo minado | `campo-minado:<pin>` | `update_config`, `start_game`, `cell_click`, `forfeit`, `reset_game`, `room-closed` |
+| Reflexo | `reflexo:<pin>` | `update-config`, `round-start`, `round-score`, `podium-show`, `back-to-lobby`, `game-finished`, `room-closed` |
 
 Presence mantém a lista de jogadores em cada canal. Como os eventos partem dos clientes, não há garantia de sigilo ou anti-trapaça (por exemplo, a palavra do Impostor é transmitida a todos os participantes).
 
@@ -132,7 +134,7 @@ npm run build  # build PWA de produção
 npm run preview # serve o build para testar PWA/offline
 ```
 
-Os testes cobrem `src/lib/utils.ts`, as regras do Campo Minado (`src/lib/campo-minado-rules.ts`) e o catálogo da Mega senha; a lógica dos jogos e do Realtime é validada manualmente (use duas abas ou dispositivos para o multiplayer).
+Os testes cobrem `src/lib/utils.ts`, as regras do Campo Minado (`src/lib/campo-minado-rules.ts`) e do Reflexo (`src/lib/reflexo-rules.ts`) e o catálogo da Mega senha; a lógica dos jogos e do Realtime é validada manualmente (use duas abas ou dispositivos para o multiplayer).
 
 ## Publicação no GitHub Pages
 

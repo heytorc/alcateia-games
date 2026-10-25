@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { DEFAULT_TRANSITION, type TransitionId } from '@/constants/transitions'
 
+/** Jogos com sala multiplayer (reconexão pela última sala). */
+export type RoomGame = 'impostor' | 'time' | 'campo-minado' | 'reflexo'
+
 type Settings = {
   allowRepeats: boolean
   countdownEnabled: boolean
@@ -26,7 +29,7 @@ type GameState = {
   customAvatars: string[]
   usedMegaPasswordWords: string[]
   lastRoomID: string | null
-  lastGameType: 'impostor' | 'time' | 'campo-minado' | null
+  lastGameType: RoomGame | null
   setSoundEnabled: (enabled: boolean) => void
   setTransition: (transition: TransitionId) => void
   updateProfile: (profile: Partial<PlayerProfile>) => void
@@ -35,7 +38,7 @@ type GameState = {
   markMegaPasswordWordsAsUsed: (words: string[]) => void
   resetMegaPasswordHistory: () => void
   resetSettings: () => void
-  setLastRoom: (roomID: string | null, gameType: 'impostor' | 'time' | 'campo-minado' | null) => void
+  setLastRoom: (roomID: string | null, gameType: RoomGame | null) => void
 }
 
 export const defaultSettings: Settings = {
