@@ -14,6 +14,7 @@ import { NumberGame } from "@/pages/games/NumberGame";
 import { PasswordGame } from "@/pages/games/PasswordGame";
 import { WeightGame } from "@/pages/games/WeightGame";
 import { ReflexoGame } from "@/pages/games/ReflexoGame";
+import { ProibidasGame } from "@/pages/games/ProibidasGame";
 
 /**
  * Transição de página neon: um overlay cobre a tela, a rota troca por baixo dele
@@ -63,6 +64,7 @@ function App() {
             <Route path="/campo-minado" element={<CampoMinadoGame />} />
             <Route path="/time" element={<TimeGame />} />
             <Route path="/reflexo" element={<ReflexoGame />} />
+            <Route path="/proibidas" element={<ProibidasGame />} />
             <Route path="*" element={<ErrorPage kind="404" />} />
           </Routes>
           </ErrorBoundary>

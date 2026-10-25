@@ -12,6 +12,7 @@ Hub de jogos rápidos, mobile-first e instalável como PWA, no estilo "Neon Arca
 - **Tempo certo:** sala multiplayer em que cada participante inicia e pausa seu cronômetro (toque no painel digital de LED, no formato mm:ss:cc) para atingir o tempo alvo. O desvio acumulado decide o pódio final; o anfitrião define rodadas, tempo máximo, precisão e se o cronômetro mostra o tempo enquanto roda ("Ver tempo").
 - **Campo minado:** sala multiplayer em grade (padrão 6×10) em que os jogadores têm vidas e revelam casas por turnos, em rodadas com ordem sorteada a cada rodada; cada bomba atingida custa uma vida. Vence o último com vida; se as casas seguras acabarem com mais de um vivo, vence quem tiver mais vidas (iguais = empate). O anfitrião configura grade, vidas e bombas. _Em evolução:_ hoje o mapa de bombas é montado pelo anfitrião (com sorteio para os demais) e transmitido a todos.
 - **Reflexo:** sala multiplayer em que o lobo encara o pote vazio; depois de uma espera aleatória (2 a 6 s) o bife aparece e cada jogador toca na tela o mais rápido possível. Tocar antes é largada falsa (2 s de punição) e demorar mais de 1,5 s conta como lento. Vence o menor tempo de reação acumulado, com pódio parcial entre rodadas.
+- **Palavras proibidas:** jogo local em que só quem conduz vê a palavra e as proibidas (tabela `taboo_cards` do Supabase, com cópia local para uso offline). Ele descreve em voz alta e toca em quem acertou; cada participante joga por si. Modo com tempo por palavra (a palavra passa sozinha quando o relógio zera) ou livre, até acabarem as palavras; no fim, pódio por acertos.
 
 ## Perfil e salas
 
@@ -69,7 +70,7 @@ src/
   pages/            HomePage e pages/games/ (um arquivo por jogo)
   components/       Shell, GameHeader, ErrorPage, BottomSheet, NeonSlider, IconCounter, diálogos…; games/ (GameButton, DrawStage, DigitalTimer, PartialPodium, ChannelKnob, JoinRoomDialog, RoomDirectory…); ui/ = shadcn
   hooks/            useMediaQuery, useOnline, useRestoreRoom
-  lib/              store (Zustand), realtime (Supabase), audio, utils (+ testes), regras do Campo Minado e do Reflexo
+  lib/              store (Zustand), realtime (Supabase), audio, utils (+ testes), regras do Campo Minado, do Reflexo e do Palavras Proibidas
   constants/        catálogos: games, palavras do Impostor e da Mega senha (fallback e semente da tabela `words`)
   hooks/            useWords (palavras via Supabase com cache), useOnline, useRestoreRoom, useMediaQuery
 supabase/           words.sql (tabela de palavras com RLS de leitura)
@@ -110,7 +111,7 @@ VITE_SUPABASE_ANON_KEY=sua-chave-publica \
 npm run dev
 ```
 
-Sem essas variáveis, os jogos multiplayer exibem a tela "Salas online fora do ar" (503). Não coloque uma service role key no frontend. As salas usam canais efêmeros; a única tabela é `words` (palavras do Impostor e da Mega senha), criada com `supabase/words.sql` e populada a partir de `src/constants/impostor-words.ts` e `password-words.ts`. Sem ela o app usa as listas embutidas.
+Sem essas variáveis, os jogos multiplayer exibem a tela "Salas online fora do ar" (503). Não coloque uma service role key no frontend. As salas usam canais efêmeros; as tabelas são `words` (palavras do Impostor e da Mega senha, criada com `supabase/words.sql` e populada a partir de `src/constants/impostor-words.ts` e `password-words.ts`) e `taboo_cards` (cartas do Palavras proibidas, `supabase/taboo_cards.sql`, semente em `src/constants/taboo-cards.ts`). Sem elas o app usa as listas embutidas.
 
 | Jogo | Canal | Eventos de Broadcast |
 |---|---|---|
@@ -134,7 +135,7 @@ npm run build  # build PWA de produção
 npm run preview # serve o build para testar PWA/offline
 ```
 
-Os testes cobrem `src/lib/utils.ts`, as regras do Campo Minado (`src/lib/campo-minado-rules.ts`) e do Reflexo (`src/lib/reflexo-rules.ts`) e o catálogo da Mega senha; a lógica dos jogos e do Realtime é validada manualmente (use duas abas ou dispositivos para o multiplayer).
+Os testes cobrem `src/lib/utils.ts`, as regras do Campo Minado (`src/lib/campo-minado-rules.ts`), do Reflexo (`src/lib/reflexo-rules.ts`) e do Palavras proibidas (`src/lib/proibidas-rules.ts`) e o catálogo da Mega senha; a lógica dos jogos e do Realtime é validada manualmente (use duas abas ou dispositivos para o multiplayer).
 
 ## Publicação no GitHub Pages
 

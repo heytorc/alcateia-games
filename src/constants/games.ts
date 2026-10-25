@@ -1,4 +1,4 @@
-export type GameId = 'letters' | 'weight' | 'number' | 'password' | 'impostor' | 'time' | 'campo-minado' | 'reflexo'
+export type GameId = 'letters' | 'weight' | 'number' | 'password' | 'impostor' | 'time' | 'campo-minado' | 'reflexo' | 'proibidas'
 
 export const games: Array<{
   id: GameId
@@ -14,4 +14,5 @@ export const games: Array<{
   { id: 'password', title: 'Mega senha', description: 'Dê uma dica. Uma palavra. Acerte a senha!', color: '#e84393' },
   { id: 'campo-minado', title: 'Campo Minado', description: 'Distribua bombas e tente sobreviver no campo.', color: '#2ecc71' },
   { id: 'reflexo', title: 'Reflexo', description: 'Toque assim que o bife cair no pote do lobo.', color: '#ff6b6b' },
+  { id: 'proibidas', title: 'Palavras proibidas', description: 'Descreva a palavra sem dizer as proibidas.', color: '#ff9f43' },
 ]
