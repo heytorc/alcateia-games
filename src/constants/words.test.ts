@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { impostorCategories, wordBank } from './impostor-words'
 import { megaPasswordCategories, megaPasswordWords } from './password-words'
 import { tabooCards } from './taboo-cards'
+import { provavelCategories, provavelQuestions } from './provavel-words'
 
 const catalogs = [
   { name: 'Impostor', categories: impostorCategories, words: wordBank, minimum: 400 },
@@ -47,5 +48,24 @@ describe('cartas do Palavras Proibidas', () => {
   it('usa maiúsculas, sem espaços sobrando', () => {
     const texts = tabooCards.flatMap(({ word, forbidden }) => [word, ...forbidden])
     expect(texts.filter((text) => text !== text.toUpperCase() || text !== text.trim() || /\s{2}/.test(text))).toEqual([])
+  })
+})
+
+describe('perguntas do Quem seria mais provável?', () => {
+  const all = Object.values(provavelCategories).flat()
+
+  it('tem volume suficiente', () => {
+    expect(provavelQuestions.length).toBeGreaterThanOrEqual(120)
+  })
+
+  it('não repete perguntas, nem entre categorias', () => {
+    expect(all.filter((question, index) => all.indexOf(question) !== index)).toEqual([])
+  })
+
+  it('traz só o complemento: minúscula no início, sem interrogação e sem espaços sobrando', () => {
+    const invalid = all.filter(
+      (question) => question !== question.trim() || /\s{2}|\?/.test(question) || question[0] !== question[0].toLowerCase(),
+    )
+    expect(invalid).toEqual([])
   })
 })

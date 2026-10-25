@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { DEFAULT_TRANSITION, type TransitionId } from '@/constants/transitions'
 
 /** Jogos com sala multiplayer (reconexão pela última sala). */
-export type RoomGame = 'impostor' | 'time' | 'campo-minado' | 'reflexo'
+export type RoomGame = 'impostor' | 'time' | 'campo-minado' | 'reflexo' | 'provavel'
 
 type Settings = {
   allowRepeats: boolean
