@@ -16,6 +16,7 @@ import { WeightGame } from "@/pages/games/WeightGame";
 import { ReflexoGame } from "@/pages/games/ReflexoGame";
 import { ProibidasGame } from "@/pages/games/ProibidasGame";
 import { ProvavelGame } from "@/pages/games/ProvavelGame";
+import { OrdemGame } from "@/pages/games/OrdemGame";
 
 /**
  * Transição de página neon: um overlay cobre a tela, a rota troca por baixo dele
@@ -67,6 +68,7 @@ function App() {
             <Route path="/reflexo" element={<ReflexoGame />} />
             <Route path="/proibidas" element={<ProibidasGame />} />
             <Route path="/provavel" element={<ProvavelGame />} />
+            <Route path="/ordem" element={<OrdemGame />} />
             <Route path="*" element={<ErrorPage kind="404" />} />
           </Routes>
           </ErrorBoundary>

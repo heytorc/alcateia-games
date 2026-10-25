@@ -16,6 +16,7 @@ const roomGameLabel: Record<RoomGame, string> = {
   "campo-minado": "de Campo Minado",
   reflexo: "de Reflexo",
   provavel: "de Quem seria mais provável?",
+  ordem: "de Ordem silenciosa",
 };
 
 export function Home() {
@@ -44,7 +45,7 @@ export function Home() {
           </GameButton>
           <div className="mt-2 flex flex-wrap justify-center gap-x-7 gap-y-1 font-game-pixel text-[11px] tracking-[.12em] text-brand-accent">
             <span>{games.length} JOGOS</span>
-            <span>{games.filter((g) => ["campo-minado", "time", "impostor", "reflexo", "provavel"].includes(g.id)).length} ONLINE</span>
+            <span>{games.filter((g) => ["campo-minado", "time", "impostor", "reflexo", "provavel", "ordem"].includes(g.id)).length} ONLINE</span>
             <span>CRÉDITOS ∞</span>
           </div>
         </section>
