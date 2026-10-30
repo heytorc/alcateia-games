@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { games } from "@/constants/games";
 import { ProfileFields, Shell } from "@/components";
 import { GameCard } from "@/components/games/GameCard";
+import { CityStreet } from "@/components/games/CityStreet";
 import { useGameStore, type RoomGame } from "@/lib/store";
 import { GameButton } from "@/components/games/GameButton";
 
@@ -49,6 +50,9 @@ export function Home() {
             <span>CRÉDITOS ∞</span>
           </div>
         </section>
+        <div className="mx-[calc(50%-50vw)] mt-4 w-screen">
+          <CityStreet />
+        </div>
         {showOnboarding && (
           <section className="mt-[35px] grid grid-cols-[minmax(220px,1fr)_minmax(190px,.8fr)_minmax(240px,1fr)] items-end gap-[22px] rounded-md neon-box [--neon-c:#6b3cff] bg-card p-[25px] max-[760px]:grid-cols-1 max-[760px]:gap-[17px]">
             <div>

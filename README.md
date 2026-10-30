@@ -16,6 +16,10 @@ Hub de jogos rápidos, mobile-first e instalável como PWA, no estilo "Neon Arca
 - **Quem seria mais provável?:** sala multiplayer em que aparece uma pergunta (tabela `words`, jogo `provavel`, com cópia local) e cada um vota em quem da sala combina mais com ela, inclusive em si mesmo. A tela mostra quem já votou, mas não em quem; quando todos votam (ou o anfitrião decide), os votos são revelados. No fim, o placar mostra o mais votado da noite.
 - **Ordem silenciosa:** sala cooperativa (inspirada em The Mind): no nível N cada jogador recebe N cartas de 1 a 100 e o grupo precisa jogá-las em ordem crescente sem conversar; cada um só joga a sua carta mais baixa. Jogar enquanto outro tinha uma menor custa uma das 3 vidas e descarta as cartas menores. O último nível depende do número de jogadores (12 com 2, 10 com 3, 8 com 4 ou mais); o anfitrião distribui as cartas e valida as jogadas. Os jogadores ficam em volta de uma mesa de cartas: tocar na própria carta mais baixa a joga, e ela desliza até o centro; num erro, as cartas da rodada embaralham e reaparecem na ordem certa, com as fora de ordem em neon vermelho.
 
+## Rua dos jogos
+
+Abaixo do título da tela inicial fica uma rua neon dos anos 80 em pixel art 2.5D (`CityStreet`): céu, horizonte e prédios em camadas de parallax, com um lote por jogo (o Reflexo ainda não tem o seu). Arraste para os lados (ou role na horizontal) para percorrer a rua e toque num lote para abrir o jogo; pelo teclado, Tab passa pelos jogos e a câmera acompanha. A grade de cards continua logo abaixo.
+
 ## Perfil e salas
 
 A tela inicial exibe a configuração de perfil até o nome ser definido. Depois disso, nome e avatar ficam disponíveis na navbar e podem ser editados por um diálogo, que também define a transição de página. Além dos avatares sugeridos, o seletor permite escolher emojis personalizados e mantém os últimos 24 emojis únicos usados no armazenamento local.
@@ -70,9 +74,9 @@ Perfil, avatares personalizados, transição de página, configurações, prefer
 src/
   main.tsx, App.tsx, styles.css   entrada, rotas/transição e tema
   pages/            HomePage e pages/games/ (um arquivo por jogo)
-  components/       Shell, GameHeader, ErrorPage, BottomSheet, NeonSlider, IconCounter, diálogos…; games/ (GameButton, DrawStage, DigitalTimer, PartialPodium, ChannelKnob, JoinRoomDialog, RoomDirectory…); ui/ = shadcn
+  components/       Shell, GameHeader, ErrorPage, BottomSheet, NeonSlider, IconCounter, diálogos…; games/ (GameButton, CityStreet, DrawStage, DigitalTimer, PartialPodium, ChannelKnob, JoinRoomDialog, RoomDirectory…); ui/ = shadcn
   hooks/            useMediaQuery, useOnline, useRestoreRoom
-  lib/              store (Zustand), realtime (Supabase), audio, utils (+ testes), regras do Campo Minado, do Reflexo, do Palavras Proibidas, do Quem seria mais provável? e da Ordem silenciosa
+  lib/              store (Zustand), realtime (Supabase), audio, utils (+ testes), cena da rua (`city-scene`), regras do Campo Minado, do Reflexo, do Palavras Proibidas, do Quem seria mais provável? e da Ordem silenciosa
   constants/        catálogos: games, palavras do Impostor e da Mega senha (fallback e semente da tabela `words`)
   hooks/            useWords (palavras via Supabase com cache), useOnline, useRestoreRoom, useMediaQuery
 supabase/           words.sql (tabela de palavras com RLS de leitura)
