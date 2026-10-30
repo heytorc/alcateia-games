@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { DEFAULT_TRANSITION, type TransitionId } from '@/constants/transitions'
 
+/** Jogos com sala multiplayer (reconexão pela última sala). */
+export type RoomGame = 'impostor' | 'time' | 'campo-minado' | 'reflexo' | 'provavel' | 'ordem'
+
 type Settings = {
   allowRepeats: boolean
   countdownEnabled: boolean
@@ -21,21 +24,23 @@ type PlayerProfile = {
 type GameState = {
   soundEnabled: boolean
   transition: TransitionId
+  transitionEnabled: boolean
   settings: Settings
   profile: PlayerProfile
   customAvatars: string[]
   usedMegaPasswordWords: string[]
   lastRoomID: string | null
-  lastGameType: 'impostor' | 'time' | 'campo-minado' | null
+  lastGameType: RoomGame | null
   setSoundEnabled: (enabled: boolean) => void
   setTransition: (transition: TransitionId) => void
+  setTransitionEnabled: (enabled: boolean) => void
   updateProfile: (profile: Partial<PlayerProfile>) => void
   addCustomAvatar: (avatar: string) => void
   updateSettings: (settings: Partial<Settings>) => void
   markMegaPasswordWordsAsUsed: (words: string[]) => void
   resetMegaPasswordHistory: () => void
   resetSettings: () => void
-  setLastRoom: (roomID: string | null, gameType: 'impostor' | 'time' | 'campo-minado' | null) => void
+  setLastRoom: (roomID: string | null, gameType: RoomGame | null) => void
 }
 
 export const defaultSettings: Settings = {
@@ -59,6 +64,7 @@ export const useGameStore = create<GameState>()(
     (set) => ({
       soundEnabled: true,
       transition: DEFAULT_TRANSITION,
+      transitionEnabled: true,
       settings: defaultSettings,
       profile: defaultProfile,
       customAvatars: [],
@@ -67,6 +73,7 @@ export const useGameStore = create<GameState>()(
       lastGameType: null,
       setSoundEnabled: (soundEnabled) => set({ soundEnabled }),
       setTransition: (transition) => set({ transition }),
+      setTransitionEnabled: (transitionEnabled) => set({ transitionEnabled }),
       updateProfile: (profile) => set((state) => ({ profile: { ...state.profile, ...profile } })),
       addCustomAvatar: (avatar) => set((state) => ({ customAvatars: [...new Set([...state.customAvatars, avatar])].slice(-24) })),
       updateSettings: (settings) => set((state) => ({ settings: { ...state.settings, ...settings } })),
@@ -82,6 +89,7 @@ export const useGameStore = create<GameState>()(
       partialize: (state) => ({
         soundEnabled: state.soundEnabled,
         transition: state.transition,
+        transitionEnabled: state.transitionEnabled,
         settings: state.settings,
         profile: state.profile,
         customAvatars: state.customAvatars,

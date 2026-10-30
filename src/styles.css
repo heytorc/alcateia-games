@@ -1849,6 +1849,13 @@ select,
 }
 .scanlines::after { content: ""; position: fixed; inset: 0; z-index: 50; pointer-events: none; background: repeating-linear-gradient(transparent 0 3px, rgba(0,0,0,.08) 3px 4px); }
 .blink { animation: neon-blink 1s steps(2) infinite; }
+/* placa de pernas neon da boate (CityStreet): duas poses acesas em alternância, como letreiro de tubos */
+.neon-legs { overflow: visible; filter: drop-shadow(0 0 1px #ff3fa4) drop-shadow(0 0 3px #ff3fa4); }
+.neon-legs path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.neon-legs-up { animation: neon-legs-pose 1.8s steps(1) infinite; }
+.neon-legs-down { animation: neon-legs-pose 1.8s steps(1) -0.9s infinite; }
+@keyframes neon-legs-pose { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .neon-legs-up { animation: none; } .neon-legs-down { display: none; } }
 @keyframes neon-blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .blink { animation: none; } }
 

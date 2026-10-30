@@ -5,6 +5,7 @@ import { PageTransition, getTransitionId, transitions } from "@/components/trans
 import type { TransitionId } from "@/constants/transitions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorPage } from "@/components/ErrorPage";
+import { useGameStore } from "@/lib/store";
 import { TimeGame } from "@/pages/games/TimeGame";
 import { Home } from "@/pages/HomePage";
 import { ImpostorGame } from "@/pages/games/ImpostorGame";
@@ -13,6 +14,10 @@ import { LettersGame } from "@/pages/games/LettersGame";
 import { NumberGame } from "@/pages/games/NumberGame";
 import { PasswordGame } from "@/pages/games/PasswordGame";
 import { WeightGame } from "@/pages/games/WeightGame";
+import { ReflexoGame } from "@/pages/games/ReflexoGame";
+import { ProibidasGame } from "@/pages/games/ProibidasGame";
+import { ProvavelGame } from "@/pages/games/ProvavelGame";
+import { OrdemGame } from "@/pages/games/OrdemGame";
 
 /**
  * Transição de página neon: um overlay cobre a tela, a rota troca por baixo dele
@@ -21,12 +26,15 @@ import { WeightGame } from "@/pages/games/WeightGame";
 function App() {
   const location = useLocation();
   const reduceMotion = useReducedMotion();
+  const transitionEnabled = useGameStore((state) => state.transitionEnabled);
+  // sem animação (pedido do sistema ou desligada no perfil), a rota só troca com um fade curto
+  const plain = reduceMotion || !transitionEnabled;
   const [run, setRun] = useState<{ key: number; id: TransitionId } | null>(null);
 
   const [lastPath, setLastPath] = useState(location.pathname);
   if (lastPath !== location.pathname) {
     setLastPath(location.pathname);
-    if (!reduceMotion) setRun({ key: Date.now(), id: getTransitionId() });
+    if (!plain) setRun({ key: Date.now(), id: getTransitionId() });
   }
 
   useEffect(() => {
@@ -43,11 +51,11 @@ function App() {
       <AnimatePresence mode="wait" custom={swapSeconds} onExitComplete={() => window.scrollTo(0, 0)}>
         <motion.div
           key={location.pathname}
-          initial={{ opacity: reduceMotion ? 0 : 1 }}
+          initial={{ opacity: plain ? 0 : 1 }}
           animate={{ opacity: 1 }}
           custom={swapSeconds}
           variants={{
-            exit: (delay: number) => ({ opacity: 0, transition: reduceMotion ? { duration: 0.12 } : { duration: 0.01, delay } }),
+            exit: (delay: number) => ({ opacity: 0, transition: plain ? { duration: 0.12 } : { duration: 0.01, delay } }),
           }}
           exit="exit"
           transition={{ duration: 0.12 }}>
@@ -61,6 +69,10 @@ function App() {
             <Route path="/impostor" element={<ImpostorGame />} />
             <Route path="/campo-minado" element={<CampoMinadoGame />} />
             <Route path="/time" element={<TimeGame />} />
+            <Route path="/reflexo" element={<ReflexoGame />} />
+            <Route path="/proibidas" element={<ProibidasGame />} />
+            <Route path="/provavel" element={<ProvavelGame />} />
+            <Route path="/ordem" element={<OrdemGame />} />
             <Route path="*" element={<ErrorPage kind="404" />} />
           </Routes>
           </ErrorBoundary>

@@ -65,6 +65,22 @@ export function createClientId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 
+/**
+ * Id do jogador estável nesta aba: sobrevive a recarregar a página (sessionStorage), mas cada aba tem o seu.
+ * Sem armazenamento disponível, cai num id novo a cada carga.
+ */
+export function tabClientId(): string {
+  try {
+    const saved = sessionStorage.getItem('alcateia-player-id')
+    if (saved) return saved
+    const id = createClientId()
+    sessionStorage.setItem('alcateia-player-id', id)
+    return id
+  } catch {
+    return createClientId()
+  }
+}
+
 /** Embaralhamento reproduzível: a mesma semente gera a mesma ordem em todos os clientes. */
 export function seededShuffle<T>(items: readonly T[], seed: number): T[] {
   let state = seed >>> 0

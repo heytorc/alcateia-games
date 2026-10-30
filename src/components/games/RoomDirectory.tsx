@@ -6,6 +6,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTi
 import { gameButtonVariants } from '@/components/games/GameButton'
 import { supabase } from '@/lib/realtime'
 import { createClientId } from '@/lib/utils'
+import type { RoomGame } from '@/lib/store'
 
 type RoomListing = {
   pin: string
@@ -17,7 +18,7 @@ type RoomListing = {
 type DirectoryPresence = RoomListing
 
 type RoomDirectoryProps = {
-  game: 'impostor' | 'time' | 'campo-minado'
+  game: RoomGame
   isHosting: boolean
   hostName: string
   hostAvatar: string

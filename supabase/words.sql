@@ -2,7 +2,7 @@
 -- A semente vem de src/constants/impostor-words.ts e password-words.ts (fallback offline do app).
 create table public.words (
   id bigint generated always as identity primary key,
-  game text not null check (game in ('impostor', 'password')),
+  game text not null check (game in ('impostor', 'password', 'provavel')),
   category text not null,
   word text not null,
   unique (game, word)

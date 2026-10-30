@@ -7,10 +7,18 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { games } from "@/constants/games";
 import { ProfileFields, Shell } from "@/components";
 import { GameCard } from "@/components/games/GameCard";
-import { useGameStore } from "@/lib/store";
+import { CityStreet } from "@/components/games/CityStreet";
+import { useGameStore, type RoomGame } from "@/lib/store";
 import { GameButton } from "@/components/games/GameButton";
 
-const roomGameLabel = { impostor: "de Impostor", time: "de Tempo Certo", "campo-minado": "de Campo Minado" } as const;
+const roomGameLabel: Record<RoomGame, string> = {
+  impostor: "de Impostor",
+  time: "de Tempo Certo",
+  "campo-minado": "de Campo Minado",
+  reflexo: "de Reflexo",
+  provavel: "de Quem seria mais provável?",
+  ordem: "de Ordem silenciosa",
+};
 
 export function Home() {
   const { profile, lastRoomID, lastGameType } = useGameStore();
@@ -38,10 +46,13 @@ export function Home() {
           </GameButton>
           <div className="mt-2 flex flex-wrap justify-center gap-x-7 gap-y-1 font-game-pixel text-[11px] tracking-[.12em] text-brand-accent">
             <span>{games.length} JOGOS</span>
-            <span>{games.filter((g) => ["campo-minado", "time", "impostor"].includes(g.id)).length} ONLINE</span>
+            <span>{games.filter((g) => ["campo-minado", "time", "impostor", "reflexo", "provavel", "ordem"].includes(g.id)).length} ONLINE</span>
             <span>CRÉDITOS ∞</span>
           </div>
         </section>
+        <div className="mx-[calc(50%-50vw)] mt-4 w-screen">
+          <CityStreet />
+        </div>
         {showOnboarding && (
           <section className="mt-[35px] grid grid-cols-[minmax(220px,1fr)_minmax(190px,.8fr)_minmax(240px,1fr)] items-end gap-[22px] rounded-md neon-box [--neon-c:#6b3cff] bg-card p-[25px] max-[760px]:grid-cols-1 max-[760px]:gap-[17px]">
             <div>
