@@ -5,6 +5,7 @@ import { PageTransition, getTransitionId, transitions } from "@/components/trans
 import type { TransitionId } from "@/constants/transitions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorPage } from "@/components/ErrorPage";
+import { useGameStore } from "@/lib/store";
 import { TimeGame } from "@/pages/games/TimeGame";
 import { Home } from "@/pages/HomePage";
 import { ImpostorGame } from "@/pages/games/ImpostorGame";
@@ -25,12 +26,15 @@ import { OrdemGame } from "@/pages/games/OrdemGame";
 function App() {
   const location = useLocation();
   const reduceMotion = useReducedMotion();
+  const transitionEnabled = useGameStore((state) => state.transitionEnabled);
+  // sem animação (pedido do sistema ou desligada no perfil), a rota só troca com um fade curto
+  const plain = reduceMotion || !transitionEnabled;
   const [run, setRun] = useState<{ key: number; id: TransitionId } | null>(null);
 
   const [lastPath, setLastPath] = useState(location.pathname);
   if (lastPath !== location.pathname) {
     setLastPath(location.pathname);
-    if (!reduceMotion) setRun({ key: Date.now(), id: getTransitionId() });
+    if (!plain) setRun({ key: Date.now(), id: getTransitionId() });
   }
 
   useEffect(() => {
@@ -47,11 +51,11 @@ function App() {
       <AnimatePresence mode="wait" custom={swapSeconds} onExitComplete={() => window.scrollTo(0, 0)}>
         <motion.div
           key={location.pathname}
-          initial={{ opacity: reduceMotion ? 0 : 1 }}
+          initial={{ opacity: plain ? 0 : 1 }}
           animate={{ opacity: 1 }}
           custom={swapSeconds}
           variants={{
-            exit: (delay: number) => ({ opacity: 0, transition: reduceMotion ? { duration: 0.12 } : { duration: 0.01, delay } }),
+            exit: (delay: number) => ({ opacity: 0, transition: plain ? { duration: 0.12 } : { duration: 0.01, delay } }),
           }}
           exit="exit"
           transition={{ duration: 0.12 }}>

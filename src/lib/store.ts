@@ -24,6 +24,7 @@ type PlayerProfile = {
 type GameState = {
   soundEnabled: boolean
   transition: TransitionId
+  transitionEnabled: boolean
   settings: Settings
   profile: PlayerProfile
   customAvatars: string[]
@@ -32,6 +33,7 @@ type GameState = {
   lastGameType: RoomGame | null
   setSoundEnabled: (enabled: boolean) => void
   setTransition: (transition: TransitionId) => void
+  setTransitionEnabled: (enabled: boolean) => void
   updateProfile: (profile: Partial<PlayerProfile>) => void
   addCustomAvatar: (avatar: string) => void
   updateSettings: (settings: Partial<Settings>) => void
@@ -62,6 +64,7 @@ export const useGameStore = create<GameState>()(
     (set) => ({
       soundEnabled: true,
       transition: DEFAULT_TRANSITION,
+      transitionEnabled: true,
       settings: defaultSettings,
       profile: defaultProfile,
       customAvatars: [],
@@ -70,6 +73,7 @@ export const useGameStore = create<GameState>()(
       lastGameType: null,
       setSoundEnabled: (soundEnabled) => set({ soundEnabled }),
       setTransition: (transition) => set({ transition }),
+      setTransitionEnabled: (transitionEnabled) => set({ transitionEnabled }),
       updateProfile: (profile) => set((state) => ({ profile: { ...state.profile, ...profile } })),
       addCustomAvatar: (avatar) => set((state) => ({ customAvatars: [...new Set([...state.customAvatars, avatar])].slice(-24) })),
       updateSettings: (settings) => set((state) => ({ settings: { ...state.settings, ...settings } })),
@@ -85,6 +89,7 @@ export const useGameStore = create<GameState>()(
       partialize: (state) => ({
         soundEnabled: state.soundEnabled,
         transition: state.transition,
+        transitionEnabled: state.transitionEnabled,
         settings: state.settings,
         profile: state.profile,
         customAvatars: state.customAvatars,
