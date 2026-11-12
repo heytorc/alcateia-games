@@ -30,6 +30,7 @@ import { GameButton } from "@/components/games/GameButton";
 import type { PlayerListItem } from "@/components/games/PlayerList";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useWords } from "@/hooks/useWords";
+import { pickHint } from "@/lib/impostor-rules";
 import { WolfFieldLobby } from "@/components/games/WolfFieldLobby";
 
 /** `votedId` nulo remove o voto de `voterId`. */
@@ -52,6 +53,8 @@ export function ImpostorGame() {
   const [gamePhase, setGamePhase] = useState<"LOBBY" | "PLAYING" | "RESULTS">("LOBBY");
   const [votes, setVotes] = useState<Record<string, string>>({});
   const [impostorId, setImpostorId] = useState("");
+  const [firstId, setFirstId] = useState("");
+  const [hint, setHint] = useState("");
   const [roomClosed, setRoomClosed] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 768px)");
@@ -90,6 +93,8 @@ export function ImpostorGame() {
         setIsImpostor(payload.impostorId === playerId.current);
         setSecretWord(payload.word);
         setImpostorId(payload.impostorId);
+        setFirstId(payload.firstId ?? "");
+        setHint(payload.hint ?? "");
         setVotes({});
       })
       .on("broadcast", { event: "vote" }, ({ payload }) => {
@@ -144,12 +149,18 @@ export function ImpostorGame() {
     } while (usedWords.current.includes(word) && usedWords.current.length < words.length);
     usedWords.current.push(word);
 
+    // Sorteia quem começa; se for o impostor, ele recebe uma palavra de apoio para disfarçar.
+    const firstId = ids[Math.floor(Math.random() * ids.length)] ?? playerId.current;
+    const hint = firstId === impostorId ? (pickHint(word) ?? "") : "";
+
     setGamePhase("PLAYING");
     setIsImpostor(impostorId === playerId.current);
     setSecretWord(word);
     setImpostorId(impostorId);
+    setFirstId(firstId);
+    setHint(hint);
     setVotes({});
-    await channel.send({ type: "broadcast", event: "round-start", payload: { impostorId, word } });
+    await channel.send({ type: "broadcast", event: "round-start", payload: { impostorId, word, firstId, hint } });
   };
   const castVote = async (votedId: string | null) => {
     const channel = channelRef.current;
@@ -321,6 +332,18 @@ export function ImpostorGame() {
                 className={`mb-[25px] rounded-md px-7 py-4 font-heading text-[30px] font-bold tracking-wide text-brand-gold ${isImpostor ? "w-full max-w-[280px] rounded-sm bg-[#ffe14a] !text-[#12040a] shadow-[6px_6px_0_#ff4552]" : "bg-panel-dark"}`}>
                 {isImpostor ? "???" : secretWord}
               </div>
+              {firstId && (
+                <p className="-mt-3 text-center text-base text-[#e8e2ff]" aria-live="polite">
+                  {firstId === playerId.current
+                    ? "Você começa a rodada!"
+                    : `Quem começa: ${players.find((p) => p.id === firstId)?.avatar ?? "🐺"} ${players.find((p) => p.id === firstId)?.name ?? "jogador"}`}
+                </p>
+              )}
+              {isImpostor && firstId === playerId.current && hint && (
+                <p className="-mt-2 rounded-sm border border-[#ffe14a]/60 bg-[#12040a]/80 px-3 py-2 text-center text-sm text-[#ffe14a]">
+                  Palavra de apoio para disfarçar: <strong>{hint}</strong>
+                </p>
+              )}
 
               <div className={`mb-5 w-full text-center ${isImpostor ? "rounded-md bg-[#12040a]/80 px-3 py-4 ring-1 ring-[#a78bfa]/40" : ""}`}>
                 <p className="mb-3 text-sm text-[#c2b9d1]">Vote em quem você acha que é o impostor:</p>
