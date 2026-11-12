@@ -5,8 +5,19 @@ import { formatStopwatch } from "@/lib/utils";
 
 export type PodiumPlayer = { id: string; name: string; avatar: string; excessMs: number };
 
-/** Ids ordenados do menor para o maior desvio acumulado. */
-export const podiumOrder = (players: PodiumPlayer[]) => [...players].sort((a, b) => a.excessMs - b.excessMs).map((player) => player.id);
+/** Ids ordenados do menor para o maior desvio acumulado (ou do maior para o menor, com `higherIsBetter`). */
+export const podiumOrder = (players: PodiumPlayer[], higherIsBetter = false) =>
+  [...players].sort((a, b) => (higherIsBetter ? b.excessMs - a.excessMs : a.excessMs - b.excessMs)).map((player) => player.id);
+
+type PartialPodiumProps = {
+  players: PodiumPlayer[];
+  previousOrder: string[] | null;
+  selfId: string;
+  /** Pontuação em que mais é melhor (ex.: acertos). Por padrão, menor é melhor e o valor é um tempo. */
+  higherIsBetter?: boolean;
+  /** Formata o valor da linha; por padrão, cronômetro. */
+  format?: (value: number) => string;
+};
 
 const SETTLE_DELAY_MS = 1100;
 
@@ -14,9 +25,9 @@ const SETTLE_DELAY_MS = 1100;
  * Pódio parcial entre rodadas. Começa na ordem da rodada anterior (`previousOrder`) e, depois de um
  * instante, passa para a ordem atual: as linhas se movem (`layout`) mostrando quem subiu e quem desceu.
  */
-export function PartialPodium({ players, previousOrder, selfId }: { players: PodiumPlayer[]; previousOrder: string[] | null; selfId: string }) {
+export function PartialPodium({ players, previousOrder, selfId, higherIsBetter = false, format = formatStopwatch }: PartialPodiumProps) {
   const reduceMotion = useReducedMotion();
-  const currentOrder = useMemo(() => podiumOrder(players), [players]);
+  const currentOrder = useMemo(() => podiumOrder(players, higherIsBetter), [players, higherIsBetter]);
   const startOrder = useMemo(() => {
     if (!previousOrder) return currentOrder;
     const known = previousOrder.filter((id) => currentOrder.includes(id));
@@ -32,7 +43,10 @@ export function PartialPodium({ players, previousOrder, selfId }: { players: Pod
   }, [settled, currentOrder, reduceMotion]);
 
   const byId = new Map(players.map((player) => [player.id, player]));
-  const rankOf = (player: PodiumPlayer) => players.filter((other) => Math.floor(other.excessMs / 10) < Math.floor(player.excessMs / 10)).length + 1;
+  // Tempos empatam na centésima; pontos, no valor exato.
+  const bucket = (value: number) => (higherIsBetter ? value : Math.floor(value / 10));
+  const rankOf = (player: PodiumPlayer) =>
+    players.filter((other) => (higherIsBetter ? bucket(other.excessMs) > bucket(player.excessMs) : bucket(other.excessMs) < bucket(player.excessMs))).length + 1;
 
   return (
     <ol aria-label="Pódio parcial" className="grid w-full gap-2">
@@ -64,7 +78,7 @@ export function PartialPodium({ players, previousOrder, selfId }: { players: Pod
                 </span>
               )}
             </span>
-            <small className={`font-game-pixel text-xs ${leader ? "text-[#4b3c16]" : "text-[#ffe14a]"}`}>{formatStopwatch(player.excessMs)}</small>
+            <small className={`font-game-pixel text-xs ${leader ? "text-[#4b3c16]" : "text-[#ffe14a]"}`}>{format(player.excessMs)}</small>
           </motion.li>
         );
       })}

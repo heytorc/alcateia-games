@@ -18,6 +18,8 @@ const roomGameLabel: Record<RoomGame, string> = {
   reflexo: "de Reflexo",
   provavel: "de Quem seria mais provável?",
   ordem: "de Ordem silenciosa",
+  proibidas: "de Palavras proibidas",
+  number: "de Cofre",
 };
 
 export function Home() {
