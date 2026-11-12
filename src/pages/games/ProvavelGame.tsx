@@ -9,7 +9,9 @@ import { Label } from "@/components/ui/label";
 import { playSuccessHorn, playTuningSound } from "@/lib/audio";
 import { supabase } from "@/lib/realtime";
 import { addVotes, finalStandings, leaders, tallyVotes, type Person, type Tally, type Votes } from "@/lib/provavel-rules";
-import { createClientId, createRoomPin, drawUnique } from "@/lib/utils";
+import { createRoomPin, drawUnique, tabClientId } from "@/lib/utils";
+import { createRoomSync, syncStorageKey, type RoomSync } from "@/lib/room-sync";
+import { useRoomWake } from "@/hooks/useRoomWake";
 import { GameIcon } from "@/components/games/GameIcon";
 import { RoomDirectory } from "@/components/games/RoomDirectory";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -30,7 +32,7 @@ import { provavelQuestions as bundledQuestions } from "@/constants/provavel-word
 type RoundStartPayload = { round: number; totalRounds: number; question: string; totals: Record<string, number> };
 type VotePayload = { voterId: string; targetId: string };
 type RevealPayload = { votes: Votes; totals: Record<string, number> };
-type ProvavelPresence = Person & { roundStart?: RoundStartPayload };
+type ProvavelPresence = Person;
 type RoomConfig = { roundCount: number };
 
 const roundCountSchema = z.coerce
@@ -97,11 +99,10 @@ export function ProvavelGame() {
   const [revealed, setRevealed] = useState(false);
   const [totals, setTotals] = useState<Record<string, number>>({});
   const [finished, setFinished] = useState(false);
-  const playerId = useRef(createClientId());
+  const playerId = useRef(tabClientId());
   const channelRef = useRef<RealtimeChannel | null>(null);
   const activeRoundRef = useRef(0);
-  /** Após voltar ao lobby, a presença ainda pode trazer o `roundStart` antigo até o anfitrião reanunciar: ignora até a próxima rodada. */
-  const ignorePresenceRound = useRef(false);
+  const syncRef = useRef<RoomSync | null>(null);
   const usedQuestions = useRef<string[]>([]);
   const settingsSnapshot = useRef<RoomConfig | null>(null);
   const { profile, soundEnabled, setLastRoom } = useGameStore();
@@ -131,7 +132,6 @@ export function ProvavelGame() {
 
   const applyRoundStart = (payload: RoundStartPayload) => {
     activeRoundRef.current = payload.round;
-    ignorePresenceRound.current = false;
     setRound(payload.round);
     setRoundCount(payload.totalRounds);
     setRoundCountInput(String(payload.totalRounds));
@@ -150,7 +150,6 @@ export function ProvavelGame() {
 
   const applyLobbyReset = () => {
     activeRoundRef.current = 0;
-    ignorePresenceRound.current = true;
     usedQuestions.current = [];
     setRound(0);
     setQuestion("");
@@ -169,10 +168,28 @@ export function ProvavelGame() {
   const sharedRef = useRef({ isHost, config: { roundCount } });
   sharedRef.current = { isHost, config: { roundCount } };
 
+  const reconnectKey = useRoomWake(channelRef, joined, () => void syncRef.current?.request());
+
   useEffect(() => {
     const client = supabase;
     if (!joined || !client || !room) return;
     const channel = client.channel(`provavel:${room}`, { config: { presence: { key: playerId.current } } });
+    const sync = createRoomSync({
+      channel,
+      selfId: playerId.current,
+      isHost: () => sharedRef.current.isHost,
+      storageKey: syncStorageKey("provavel", room),
+      resetEvents: ["round-start", "back-to-lobby"],
+      handlers: {
+        "update-config": (payload: RoomConfig) => applyConfig(payload),
+        "round-start": (payload: RoundStartPayload) => applyRoundStart(payload),
+        vote: (payload: VotePayload) => setVotes((current) => ({ ...current, [payload.voterId]: payload.targetId })),
+        reveal: (payload: RevealPayload) => applyReveal(payload),
+        "back-to-lobby": applyLobbyReset,
+        "game-finished": () => setFinished(true),
+      },
+    });
+    syncRef.current = sync;
     const syncLobby = () => {
       const presence = channel.presenceState<ProvavelPresence>();
       const current = Object.fromEntries(
@@ -183,33 +200,15 @@ export function ProvavelGame() {
       );
       setPlayers(current);
       setKnown((previous) => ({ ...previous, ...current }));
-      if (activeRoundRef.current === 0 && !ignorePresenceRound.current) {
-        const activeRound = Object.values(presence)
-          .flat()
-          .find((entry) => entry.roundStart)?.roundStart;
-        if (activeRound) applyRoundStart(activeRound);
-      }
     };
     channel
       .on("presence", { event: "sync" }, syncLobby)
-      .on("presence", { event: "join" }, () => {
-        syncLobby();
-        if (sharedRef.current.isHost && activeRoundRef.current === 0) {
-          void channel.send({ type: "broadcast", event: "update-config", payload: sharedRef.current.config });
-        }
-      })
-      .on("presence", { event: "leave" }, syncLobby)
-      .on("broadcast", { event: "update-config" }, ({ payload }: { payload: RoomConfig }) => applyConfig(payload))
-      .on("broadcast", { event: "round-start" }, ({ payload }: { payload: RoundStartPayload }) =>
-        applyRoundStart(payload),
-      )
-      .on("broadcast", { event: "vote" }, ({ payload }: { payload: VotePayload }) =>
-        setVotes((current) => ({ ...current, [payload.voterId]: payload.targetId })),
-      )
-      .on("broadcast", { event: "reveal" }, ({ payload }: { payload: RevealPayload }) => applyReveal(payload))
-      .on("broadcast", { event: "back-to-lobby" }, applyLobbyReset)
-      .on("broadcast", { event: "game-finished" }, () => setFinished(true))
+      .on("presence", { event: "join" }, syncLobby)
+      .on("presence", { event: "leave" }, syncLobby);
+    sync.attach();
+    channel
       .on("broadcast", { event: "room-closed" }, () => {
+        sync.clear();
         activeRoundRef.current = 0;
         setJoined(false);
         setRoomClosed(true);
@@ -221,19 +220,22 @@ export function ProvavelGame() {
         await channel.track({ name: profile.name.trim(), avatar: profile.avatar, pin: room });
         setLastRoom(room, "provavel");
         syncLobby();
+        // Reconectou ou recarregou: o anfitrião retoma a partida salva; os demais pedem a atual a ele.
+        if (sharedRef.current.isHost) sync.restore();
+        else void sync.request();
       });
     channelRef.current = channel;
     return () => {
       void client.removeChannel(channel);
     };
-  }, [joined, profile.avatar, profile.name, room]);
+  }, [joined, profile.avatar, profile.name, room, reconnectKey]);
 
   const reveal = async () => {
     if (revealed) return;
     const payload: RevealPayload = { votes, totals: addVotes(totals, votes) };
     applyReveal(payload);
     playTuningSound(soundEnabled);
-    await channelRef.current?.send({ type: "broadcast", event: "reveal", payload });
+    await syncRef.current?.send("reveal", payload);
   };
 
   // Todos votaram: o anfitrião revela sozinho (antes disso, só se tocar em "Revelar votos").
@@ -286,7 +288,7 @@ export function ProvavelGame() {
     const next: RoomConfig = { roundCount: count };
     applyConfig(next);
     setSettingsOpen(false);
-    await channelRef.current?.send({ type: "broadcast", event: "update-config", payload: next });
+    await syncRef.current?.send("update-config", next);
   };
 
   const joinRoom = () => {
@@ -312,8 +314,7 @@ export function ProvavelGame() {
       totals: nextRound === 1 ? {} : totals,
     };
     applyRoundStart(payload);
-    await channel.track({ name: profile.name.trim(), avatar: profile.avatar, roundStart: payload });
-    await channel.send({ type: "broadcast", event: "round-start", payload });
+    await syncRef.current?.send("round-start", payload);
   };
 
   const vote = async (targetId: string) => {
@@ -321,22 +322,19 @@ export function ProvavelGame() {
     const payload: VotePayload = { voterId: playerId.current, targetId };
     setVotes((current) => ({ ...current, [payload.voterId]: targetId }));
     if ("vibrate" in navigator) navigator.vibrate(40);
-    await channelRef.current?.send({ type: "broadcast", event: "vote", payload });
+    await syncRef.current?.send("vote", payload);
   };
 
   const backToLobby = async () => {
     applyLobbyReset();
-    const channel = channelRef.current;
-    // Sem `roundStart` na presença: quem entrar agora cai no lobby, não na rodada antiga.
-    await channel?.track({ name: profile.name.trim(), avatar: profile.avatar, pin: room });
-    await channel?.send({ type: "broadcast", event: "back-to-lobby", payload: {} });
+    await syncRef.current?.send("back-to-lobby");
   };
 
   const finishGame = async () => {
     setFinished(true);
     setLastRoom(null, null);
     playSuccessHorn(soundEnabled);
-    await channelRef.current?.send({ type: "broadcast", event: "game-finished", payload: {} });
+    await syncRef.current?.send("game-finished");
   };
 
   const resetRoomState = () => {
@@ -357,6 +355,7 @@ export function ProvavelGame() {
     const channel = channelRef.current;
     if (channel) await channel.send({ type: "broadcast", event: "room-closed", payload: {} });
     if (channel && supabase) await supabase.removeChannel(channel);
+    syncRef.current?.clear();
     setHostRoom("provavel", room, false);
     resetRoomState();
   };
