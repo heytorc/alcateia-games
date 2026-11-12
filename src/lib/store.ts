@@ -12,7 +12,6 @@ type Settings = {
   weightMin: number
   weightMax: number
   weightUnit: 'g' | 'kg'
-  numberDigits: number
   passwordCount: number
 }
 
@@ -50,7 +49,6 @@ export const defaultSettings: Settings = {
   weightMin: 10,
   weightMax: 5000,
   weightUnit: 'g',
-  numberDigits: 4,
   passwordCount: 5
 }
 

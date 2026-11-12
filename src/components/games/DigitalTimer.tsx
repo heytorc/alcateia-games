@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { LedColon, LedDigit } from "@/components/games/LedDigits";
 
 type DigitalTimerProps = {
   elapsedMs: number;
@@ -10,66 +11,6 @@ type DigitalTimerProps = {
   hideReadout?: boolean;
   onPress: () => void;
 };
-
-const T = 10; // espessura dos segmentos
-const horizontal = (x1: number, x2: number, y: number) =>
-  `${x1},${y} ${x1 + T / 2},${y - T / 2} ${x2 - T / 2},${y - T / 2} ${x2},${y} ${x2 - T / 2},${y + T / 2} ${x1 + T / 2},${y + T / 2}`;
-const vertical = (x: number, y1: number, y2: number) =>
-  `${x},${y1} ${x + T / 2},${y1 + T / 2} ${x + T / 2},${y2 - T / 2} ${x},${y2} ${x - T / 2},${y2 - T / 2} ${x - T / 2},${y1 + T / 2}`;
-
-/** Segmentos de um dígito de 60×100, na ordem a, b, c, d, e, f, g. */
-const SEGMENTS = [
-  horizontal(9, 51, 6),
-  vertical(55, 9, 47),
-  vertical(55, 53, 91),
-  horizontal(9, 51, 94),
-  vertical(5, 53, 91),
-  vertical(5, 9, 47),
-  horizontal(9, 51, 50),
-];
-
-const DIGITS: Record<string, string> = {
-  "0": "abcdef",
-  "1": "bc",
-  "2": "abged",
-  "3": "abgcd",
-  "4": "fgbc",
-  "5": "afgcd",
-  "6": "afgedc",
-  "7": "abc",
-  "8": "abcdefg",
-  "9": "abcdfg",
-  "-": "g",
-};
-
-function Digit({ char }: { char: string }) {
-  const on = DIGITS[char] ?? "";
-  return (
-    <svg viewBox="0 0 60 100" className="h-full w-[13%] min-w-0 shrink-0 overflow-visible" aria-hidden="true">
-      {SEGMENTS.map((points, index) => {
-        const lit = on.includes("abcdefg"[index]);
-        return (
-          <polygon
-            key={index}
-            points={points}
-            fill={lit ? "#39ff7a" : "#0b2b17"}
-            style={lit ? { filter: "drop-shadow(0 0 4px #39ff7a)" } : undefined}
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
-function Colon() {
-  return (
-    <svg viewBox="0 0 16 100" className="h-full w-[4%] shrink-0 overflow-visible" aria-hidden="true">
-      {[32, 68].map((cy) => (
-        <circle key={cy} cx="8" cy={cy} r="6" fill="#39ff7a" style={{ filter: "drop-shadow(0 0 4px #39ff7a)" }} />
-      ))}
-    </svg>
-  );
-}
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -101,7 +42,7 @@ export function DigitalTimer({ elapsedMs, running, finished, exact = false, hide
           aria-hidden="true"
           className={`flex h-[clamp(56px,17vw,104px)] w-full items-center justify-center gap-[1%] ${celebrating ? "blink" : ""}`}
           style={{ transform: "skewX(-6deg)" } as CSSProperties}>
-          {text.split("").map((char, index) => (char === ":" ? <Colon key={index} /> : <Digit key={index} char={char} />))}
+          {text.split("").map((char, index) => (char === ":" ? <LedColon key={index} /> : <LedDigit key={index} char={char} />))}
         </time>
         <span
           className={`mt-3 block text-center font-game-pixel text-[11px] tracking-[.2em] ${

@@ -8,13 +8,13 @@ export const games: Array<{
 }> = [
   { id: 'letters', title: 'Sortear letras', description: 'A letra certa para o desafio da vez.', color: '#6c5ce7' },
   { id: 'weight', title: 'Sortear peso', description: 'Escolha um peso entre gramas e quilos.', color: '#00b894' },
-  { id: 'number', title: 'Sortear número', description: 'Um número inteiro para qualquer brincadeira.', color: '#0984e3' },
+  { id: 'number', title: 'Cofre', description: 'Descubra o código antes dos outros e abra o cofre.', color: '#0984e3' },
   { id: 'time', title: 'Tempo certo', description: 'Pare o cronômetro no segundo exato.', color: '#fdcb6e' },
   { id: 'impostor', title: 'Impostor', description: 'Descubra quem está jogando um jogo duplo.', color: '#d63031' },
   { id: 'password', title: 'Mega senha', description: 'Dê uma dica. Uma palavra. Acerte a senha!', color: '#e84393' },
   { id: 'campo-minado', title: 'Campo Minado', description: 'Distribua bombas e tente sobreviver no campo.', color: '#2ecc71' },
   { id: 'ordem', title: 'Ordem silenciosa', description: 'Joguem as cartas em ordem crescente sem falar.', color: '#a29bfe' },
   { id: 'reflexo', title: 'Reflexo', description: 'Toque assim que o bife cair no pote do lobo.', color: '#ff6b6b' },
-  { id: 'proibidas', title: 'Palavras proibidas', description: 'Descreva a palavra sem dizer as proibidas.', color: '#ff9f43' },
+  { id: 'proibidas', title: 'Palavras proibidas', description: 'Descreva a palavra sem dizer as proibidas, em sala.', color: '#ff9f43' },
   { id: 'provavel', title: 'Quem seria mais provável?', description: 'Vote em quem da turma combina com a pergunta.', color: '#00cec9' },
 ]
