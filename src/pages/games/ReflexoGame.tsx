@@ -53,23 +53,15 @@ const resultText = (result: TapResult) =>
       ? "Muito lento!"
       : "Largou antes do bife!";
 
-type StageProps = { phase: Phase; round: number; steakShown: boolean; onSteakVisible: () => void; onTap: () => void };
+type StageProps = { phase: Phase; round: number; onSteakVisible: () => void; onTap: () => void };
 
-/**
- * As cenas ficam empilhadas (espera → bife → resultado): cada uma entra por cima da anterior, que continua
- * visível enquanto a nova carrega, então a troca nunca pisca em branco.
- */
-function ReflexoStage({ phase, round, steakShown, onSteakVisible, onTap }: StageProps) {
+/** Uma única cena por vez: os GIFs têm transparência, então empilhar cenas deixaria as anteriores visíveis. */
+function ReflexoStage({ phase, round, onSteakVisible, onTap }: StageProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     if (!event.repeat) onTap();
   };
-  const layers: Phase[] = [
-    "espera",
-    ...(phase === "bife" || steakShown ? (["bife"] as const) : []),
-    ...(phase === "comendo" || phase === "triste" ? [phase] : []),
-  ];
   return (
     <button
       type="button"
@@ -80,18 +72,16 @@ function ReflexoStage({ phase, round, steakShown, onSteakVisible, onTap }: Stage
       }}
       onKeyDown={onKeyDown}
       className="neon-box relative aspect-square w-full max-w-[380px] touch-manipulation select-none overflow-hidden rounded-md border border-[#4a34a8] bg-[#150d33] outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]">
-      {layers.map((layer) => (
-        <img
-          key={`${layer}-${round}`}
-          // O bife toca uma vez só: a query nova em cada rodada faz o GIF recomeçar do primeiro quadro.
-          src={layer === "bife" ? `${sceneSrc(layer)}?r=${round}` : sceneSrc(layer)}
-          alt=""
-          draggable={false}
-          // A reação conta de quando o bife está carregado na tela, não de quando o timer disparou.
-          onLoad={layer === "bife" ? onSteakVisible : undefined}
-          className="pointer-events-none absolute inset-0 h-full w-full [image-rendering:pixelated]"
-        />
-      ))}
+      <img
+        key={`${phase}-${round}`}
+        // O bife toca uma vez só: a query nova em cada rodada faz o GIF recomeçar do primeiro quadro.
+        src={phase === "bife" ? `${sceneSrc(phase)}?r=${round}` : sceneSrc(phase)}
+        alt=""
+        draggable={false}
+        // A reação conta de quando o bife está carregado na tela, não de quando o timer disparou.
+        onLoad={phase === "bife" ? onSteakVisible : undefined}
+        className="pointer-events-none absolute inset-0 h-full w-full [image-rendering:pixelated]"
+      />
     </button>
   );
 }
@@ -722,7 +712,6 @@ export function ReflexoGame() {
           <ReflexoStage
             phase={phase}
             round={round}
-            steakShown={steakShown}
             onSteakVisible={steakVisible}
             onTap={tap}
           />
