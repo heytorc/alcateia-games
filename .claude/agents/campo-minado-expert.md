@@ -29,3 +29,8 @@ Você é especialista no **Campo Minado** (rota `/campo-minado`; id `campo-minad
 
 ## Como verificar
 Duas ou mais abas: lobby, configurar, posicionar bombas, jogar por turnos/rodadas até perder vidas, empate/vitória por vidas, jogador da vez saindo, resultado e `reset_game`. Teste a grade em 420px (rolagem/orientação). `npm run lint && npm test`.
+
+## Vez e tempo por jogada
+- Vez própria: banner neon, borda rosa pulsando na grade (`turn` em `CampoMinadoGrid`), vibração e som; nas dos outros a grade fica esmaecida.
+- Tempo opcional (desligado por padrão; `turnTimerEnabled`/`turnSeconds` na config, 5–60 s): ao zerar, `applyTimeout` tira uma vida e passa a vez. O dono da vez dispara `turn_timeout {playerId, round, turn}`; o anfitrião cobre quem sumiu após uma folga. `cell_click` e `turn_timeout` levam `round`+`turn` e as regras ignoram o turno que já passou.
+- Eventos passam por `createRoomSync` (ressincronização): `start_game` e `reset_game` reiniciam o log.
