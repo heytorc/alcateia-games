@@ -9,7 +9,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/lib/realtime";
 import { useGameStore } from "@/lib/store";
 import { playDigSound, playExplosionSound, playTickSound } from "@/lib/audio";
-import { createClientId, createRoomPin } from "@/lib/utils";
+import { tabClientId, createRoomPin } from "@/lib/utils";
+import { createRoomSync, syncStorageKey, type RoomSync } from "@/lib/room-sync";
+import { useRoomWake } from "@/hooks/useRoomWake";
 import { BottomSheet } from "@/components/BottomSheet";
 import { IconCounter } from "@/components/IconCounter";
 import { NeonSlider } from "@/components/NeonSlider";
@@ -54,7 +56,7 @@ export function CampoMinadoGame() {
   const [bombsPerPlayer, setBombsPerPlayer] = useState(3);
   const [showMyBombs, setShowMyBombs] = useState(true);
 
-  const playerId = useRef(createClientId());
+  const playerId = useRef(tabClientId());
 
   // Gameplay State
   const [myBombs, setMyBombs] = useState<number[]>([]);
@@ -80,6 +82,7 @@ export function CampoMinadoGame() {
     active: p.id === activeId,
   }));
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
+  const syncRef = useRef<RoomSync | null>(null);
   const { profile, soundEnabled, setLastRoom } = useGameStore();
 
   const applyConfig = (config: typeof sharedRef.current.config) => {
@@ -101,60 +104,65 @@ export function CampoMinadoGame() {
     setIsHost(isHostRoom("campo-minado", restoredPin));
   });
 
+  const reconnectKey = useRoomWake(channelRef, joined, () => void syncRef.current?.request());
+
   useEffect(() => {
     const client = supabase;
     if (!joined || !client || !room) return;
 
     const channel = client.channel(`campo-minado:${room}`, { config: { presence: { key: playerId.current } } });
+    const sync = createRoomSync({
+      channel,
+      selfId: playerId.current,
+      isHost: () => sharedRef.current.isHost,
+      storageKey: syncStorageKey("campo-minado", room),
+      resetEvents: ["start_game", "reset_game"],
+      handlers: {
+        update_config: (payload) => applyConfig(payload),
+        start_game: (payload) => {
+          applyConfig(payload.config);
+          setSettledRound(0);
+          setMatch(createMatch(payload.seed, payload.totalCells, payload.maxLives, payload.bombMap, payload.playerIds));
+        },
+        cell_click: (payload, { replay }) => {
+          const { cellIndex, playerId: clickedPlayerId } = payload;
+          const current = matchRef.current;
+          if (!replay) {
+            const next = current && applyClick(current, cellIndex, clickedPlayerId);
+            if (!current || next === current) return;
+            const sound = useGameStore.getState().soundEnabled;
+            if (current.bombMap[cellIndex]) playExplosionSound(sound);
+            else playDigSound(sound);
+          }
+          setMatch((prev) => prev && applyClick(prev, cellIndex, clickedPlayerId));
+        },
+        forfeit: (payload) => setMatch((prev) => prev && forfeit(prev, payload.playerId)),
+        reset_game: () => {
+          clearMatch();
+          channelRef.current
+            ?.track({ name: profile.name.trim(), avatar: profile.avatar, ready: false })
+            .catch(() => {});
+        },
+      },
+    });
+    syncRef.current = sync;
 
+    channel.on("presence", { event: "sync" }, () => {
+      const state = channel.presenceState<PlayerState>();
+      setPlayers(
+        Object.entries(state).map(([id, entries]) => ({
+          id,
+          name: entries[0]?.name ?? "Desconhecido",
+          avatar: entries[0]?.avatar ?? "🐺",
+          ready: entries[0]?.ready ?? false,
+          bombs: entries[0]?.bombs ?? [],
+        })),
+      );
+    });
+    sync.attach();
     channel
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState<PlayerState>();
-        setPlayers(
-          Object.entries(state).map(([id, entries]) => ({
-            id,
-            name: entries[0]?.name ?? "Desconhecido",
-            avatar: entries[0]?.avatar ?? "🐺",
-            ready: entries[0]?.ready ?? false,
-            bombs: entries[0]?.bombs ?? [],
-          })),
-        );
-      })
-      .on("presence", { event: "join" }, () => {
-        // Quem entra depois não recebeu o último update_config: o anfitrião reenvia.
-        if (sharedRef.current.isHost) {
-          void channel.send({ type: "broadcast", event: "update_config", payload: sharedRef.current.config });
-        }
-      })
-      .on("broadcast", { event: "start_game" }, ({ payload }) => {
-        applyConfig(payload.config);
-        setSettledRound(0);
-        setMatch(createMatch(payload.seed, payload.totalCells, payload.maxLives, payload.bombMap, payload.playerIds));
-      })
-      .on("broadcast", { event: "cell_click" }, ({ payload }) => {
-        const { cellIndex, playerId: clickedPlayerId } = payload;
-        const current = matchRef.current;
-        const next = current && applyClick(current, cellIndex, clickedPlayerId);
-        if (!current || next === current) return;
-
-        setMatch((prev) => prev && applyClick(prev, cellIndex, clickedPlayerId));
-        const sound = useGameStore.getState().soundEnabled;
-        if (current.bombMap[cellIndex]) playExplosionSound(sound);
-        else playDigSound(sound);
-      })
-      .on("broadcast", { event: "forfeit" }, ({ payload }) => {
-        setMatch((prev) => prev && forfeit(prev, payload.playerId));
-      })
-      .on("broadcast", { event: "update_config" }, ({ payload }) => applyConfig(payload))
-      .on("broadcast", { event: "reset_game" }, () => {
-        clearMatch();
-        channelRef.current?.track({
-            name: profile.name.trim(),
-            avatar: profile.avatar,
-            ready: false,
-        }).catch(() => {});
-      })
       .on("broadcast", { event: "room-closed" }, () => {
+        sync.clear();
         setJoined(false);
         clearMatch();
         setRoomClosed(true);
@@ -169,6 +177,9 @@ export function CampoMinadoGame() {
             ready: false,
           });
           setLastRoom(room, "campo-minado");
+          // Reconectou ou recarregou: o anfitrião retoma a partida salva; os demais pedem a atual a ele.
+          if (sharedRef.current.isHost) sync.restore();
+          else void sync.request();
         }
       });
 
@@ -176,7 +187,7 @@ export function CampoMinadoGame() {
     return () => {
       void client.removeChannel(channel);
     };
-  }, [joined, profile.avatar, profile.name, room]);
+  }, [joined, profile.avatar, profile.name, room, reconnectKey]);
 
   // Quem sai da sala na vez dele travaria a partida: o anfitrião o elimina após uma folga.
   const turnPlayerId = match ? currentPlayerId(match) : null;
@@ -185,8 +196,8 @@ export function CampoMinadoGame() {
     if (!isHost || !turnPlayerId || turnPlayerPresent) return;
     const timer = setTimeout(() => {
       setMatch((prev) => prev && forfeit(prev, turnPlayerId));
-      void channelRef.current?.send({ type: "broadcast", event: "forfeit", payload: { playerId: turnPlayerId } });
-    }, 3000);
+      void syncRef.current?.send("forfeit", { playerId: turnPlayerId });
+    }, 15000);
     return () => clearTimeout(timer);
   }, [isHost, turnPlayerId, turnPlayerPresent]);
 
@@ -230,13 +241,7 @@ export function CampoMinadoGame() {
   };
 
   const updateSettings = async () => {
-    const channel = channelRef.current;
-    if (!channel) return;
-    await channel.send({
-      type: "broadcast",
-      event: "update_config",
-      payload: sharedRef.current.config
-    });
+    await syncRef.current?.send("update_config", sharedRef.current.config);
   };
 
   const handleBombPlacement = (index: number) => {
@@ -271,7 +276,7 @@ export function CampoMinadoGame() {
     };
     setSettledRound(0);
     setMatch(createMatch(payload.seed, totalCells, maxLives, bombMap, payload.playerIds));
-    await channel.send({ type: "broadcast", event: "start_game", payload });
+    await syncRef.current?.send("start_game", payload);
   };
 
   const onCellClick = async (index: number) => {
@@ -284,11 +289,7 @@ export function CampoMinadoGame() {
     setMatch(next);
     if (match.bombMap[index]) playExplosionSound(soundEnabled);
     else playDigSound(soundEnabled);
-    await channel.send({
-      type: "broadcast",
-      event: "cell_click",
-      payload: { cellIndex: index, playerId: playerId.current }
-    });
+    await syncRef.current?.send("cell_click", { cellIndex: index, playerId: playerId.current });
   };
 
   const resetGame = async () => {
@@ -296,11 +297,7 @@ export function CampoMinadoGame() {
     if (!channel) return;
 
     clearMatch();
-    await channel.send({
-      type: "broadcast",
-      event: "reset_game",
-      payload: {}
-    });
+    await syncRef.current?.send("reset_game");
 
     await channel.track({
         name: profile.name.trim(),
@@ -312,6 +309,7 @@ export function CampoMinadoGame() {
   const leaveRoom = async () => {
     const channel = channelRef.current;
     if (channel && supabase) await supabase.removeChannel(channel);
+    syncRef.current?.clear();
     setHostRoom("campo-minado", room, false);
 
     setJoined(false);

@@ -8,7 +8,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
  */
 // Os payloads variam por evento; cada jogo tipa o seu dentro do handler.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type SyncHandler = (payload: any) => void;
+export type SyncHandler = (payload: any, meta: { replay: boolean }) => void;
 type Entry = { event: string; payload: unknown };
 
 type Options = {
@@ -60,7 +60,7 @@ export function createRoomSync({ channel, selfId, isHost, storageKey, resetEvent
       for (const [event, handler] of Object.entries(handlers)) {
         channel.on("broadcast", { event }, ({ payload }: { payload: unknown }) => {
           record({ event, payload });
-          handler(payload);
+          handler(payload, { replay: false });
         });
       }
       channel.on("broadcast", { event: "sync-request" }, ({ payload }: { payload: { from: string } }) => {
@@ -71,7 +71,7 @@ export function createRoomSync({ channel, selfId, isHost, storageKey, resetEvent
         log = [];
         for (const entry of payload.log) {
           record(entry);
-          handlers[entry.event]?.(entry.payload);
+          handlers[entry.event]?.(entry.payload, { replay: true });
         }
       });
     },
@@ -86,7 +86,7 @@ export function createRoomSync({ channel, selfId, isHost, storageKey, resetEvent
         const saved = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as Entry[];
         for (const entry of Array.isArray(saved) ? saved : []) {
           record(entry);
-          handlers[entry.event]?.(entry.payload);
+          handlers[entry.event]?.(entry.payload, { replay: true });
         }
       } catch {
         /* log salvo ilegível: segue sem ele */

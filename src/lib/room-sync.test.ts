@@ -82,6 +82,6 @@ describe("createRoomSync", () => {
     guest.attach();
     await guest.request();
     expect(applied).toHaveBeenCalledTimes(1);
-    expect(applied).toHaveBeenCalledWith({ round: 2 });
+    expect(applied).toHaveBeenCalledWith({ round: 2 }, { replay: true });
   });
 });

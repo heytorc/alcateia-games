@@ -25,6 +25,7 @@ import { useGameStore } from "@/lib/store";
 import { JoinRoomDialog } from "@/components/games/JoinRoomDialog";
 import { roomDescriptionClass, roomHeadingClass, roomPageClass } from "@/components/games/room-styles";
 import { isHostRoom, setHostRoom, useRestoreRoom } from "@/hooks/useRestoreRoom";
+import { useRoomWake } from "@/hooks/useRoomWake";
 import { ErrorPage } from "@/components/ErrorPage";
 import { useOnline } from "@/hooks/useOnline";
 import { GameButton } from "@/components/games/GameButton";
@@ -139,6 +140,11 @@ export function OrdemGame() {
   const sharedRef = useRef({ isHost, publish });
   sharedRef.current = { isHost, publish };
 
+  // Ao voltar do segundo plano: recria o canal caído ou pede a partida atual ao anfitrião.
+  const reconnectKey = useRoomWake(channelRef, joined, () => {
+    if (!sharedRef.current.isHost) void channelRef.current?.send({ type: "broadcast", event: "sync-request", payload: {} });
+  });
+
   useEffect(() => {
     const client = supabase;
     if (!joined || !client || !room) return;
@@ -212,7 +218,7 @@ export function OrdemGame() {
     return () => {
       void client.removeChannel(channel);
     };
-  }, [joined, profile.avatar, profile.name, room]);
+  }, [joined, profile.avatar, profile.name, room, reconnectKey]);
 
   const joinListedRoom = (listedRoom: string) => {
     if (!profile.name.trim()) return;
