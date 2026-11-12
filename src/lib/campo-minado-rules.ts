@@ -68,8 +68,15 @@ function advance(m: Match): Match {
   return { ...m, round, order: roundOrder(m.seed, round, m.lives), turn: 0 }
 }
 
-export function applyClick(m: Match, cell: number, playerId: string): Match {
-  if (currentPlayerId(m) !== playerId) return m
+/** Identifica um turno: jogadas e timeouts só valem no turno em que foram feitos. */
+export type TurnRef = { round: number; turn: number }
+
+export const turnRef = (m: Match): TurnRef => ({ round: m.round, turn: m.turn })
+
+const sameTurn = (m: Match, at?: TurnRef) => !at || (at.round === m.round && at.turn === m.turn)
+
+export function applyClick(m: Match, cell: number, playerId: string, at?: TurnRef): Match {
+  if (currentPlayerId(m) !== playerId || !sameTurn(m, at)) return m
   if (cell < 0 || cell >= m.totalCells || (m.statuses[cell] ?? 'HIDDEN') !== 'HIDDEN') return m
 
   const exploded = Boolean(m.bombMap[cell])
@@ -88,4 +95,10 @@ export function forfeit(m: Match, playerId: string): Match {
   if (wasTurn) return advance(next)
   const result = getResult(next)
   return result ? { ...next, result } : next
+}
+
+/** Tempo do turno esgotado: o jogador da vez perde uma vida, sem abrir casa, e a vez passa. */
+export function applyTimeout(m: Match, playerId: string, at: TurnRef): Match {
+  if (currentPlayerId(m) !== playerId || !sameTurn(m, at)) return m
+  return advance({ ...m, lives: { ...m.lives, [playerId]: m.lives[playerId] - 1 } })
 }

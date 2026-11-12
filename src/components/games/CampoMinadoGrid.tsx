@@ -15,6 +15,8 @@ interface CampoMinadoGridProps {
   myBombs: number[]; // Only for LOBBY phase
   showMyBombs?: boolean; // Configuration
   disabled?: boolean;
+  /** De quem é a vez, para a borda: `mine` pulsa em rosa, `other` fica apagada. */
+  turn?: 'mine' | 'other';
 }
 
 export const CampoMinadoGrid: React.FC<CampoMinadoGridProps> = ({
@@ -26,6 +28,7 @@ export const CampoMinadoGrid: React.FC<CampoMinadoGridProps> = ({
   myBombs,
   showMyBombs = true,
   disabled = false,
+  turn,
 }) => {
   const totalCells = rows * cols;
   const reduceMotion = useReducedMotion();
@@ -48,8 +51,14 @@ export const CampoMinadoGrid: React.FC<CampoMinadoGridProps> = ({
       className="mx-auto grid gap-[3px] rounded-md border-2 bg-[#0a0618] p-2 sm:gap-1"
       animate={{
         x: hit && !reduceMotion ? [0, -10, 10, -8, 8, -4, 4, 0] : 0,
-        borderColor: hit ? '#ff4552' : '#2ecc71',
-        boxShadow: hit ? '0 0 18px rgba(255,69,82,.8)' : '0 0 14px rgba(46,204,113,.6)',
+        borderColor: hit ? '#ff4552' : turn === 'mine' ? '#ff2e93' : turn === 'other' ? '#1d5a3c' : '#2ecc71',
+        boxShadow: hit
+          ? '0 0 18px rgba(255,69,82,.8)'
+          : turn === 'mine'
+            ? '0 0 26px rgba(255,46,147,.9)'
+            : turn === 'other'
+              ? '0 0 4px rgba(46,204,113,.2)'
+              : '0 0 14px rgba(46,204,113,.6)',
       }}
       transition={{ x: { duration: 0.5 }, borderColor: { duration: 0.15 }, boxShadow: { duration: 0.15 } }}
       style={{
