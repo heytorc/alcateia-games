@@ -315,8 +315,7 @@ function drawLot(ctx: Ctx, sg: Ctx, lot: Lot, rnd: () => number) {
       break
     }
     case 'banco': {
-      // banco: fachada de pedra com frontão e colunas, porta de cofre redonda e letreiro dourado
-      tower(ctx, rnd, lot)
+      // banco: fachada de pedra com frontão e colunas e letreiro dourado (sem torre azul atrás)
       rect(ctx, x, G - 44, w - 4, 44, '#4f4c66')
       rect(ctx, x - 2, G - 48, w, 4, '#8f8ba8')
       rect(ctx, x + 4, G - 52, w - 12, 4, '#b8b4cf')
@@ -328,15 +327,8 @@ function drawLot(ctx: Ctx, sg: Ctx, lot: Lot, rnd: () => number) {
         rect(ctx, colX - 1, G - 7, 7, 3, '#b8b4cf')
       }
       rect(ctx, x - 2, G - 4, w, 4, '#8f8ba8')
-      // porta do cofre à esquerda: disco de aço com raios e miolo dourado
-      circle(ctx, x + 20, G - 22, 13, '#2a2a38')
-      circle(ctx, x + 20, G - 22, 11, '#8a8a9c')
-      circle(ctx, x + 20, G - 22, 7, '#5d5d70')
-      for (let i = 0; i < 4; i++) {
-        rect(ctx, x + 19, G - 33 + (i % 2) * 22, 2, 5, '#c9c9d9')
-        rect(ctx, x + 9 + (i % 2) * 22, G - 23, 5, 2, '#c9c9d9')
-      }
-      circle(ctx, x + 20, G - 22, 3, '#ffd84a')
+      // vitrine escura à esquerda
+      rect(ctx, x + 8, G - 34, 24, 22, '#07040f')
       // porta de entrada e painel do letreiro de LED
       rect(ctx, x + w - 22, G - 26, 12, 26, '#07040f')
       rect(ctx, x + w - 13, G - 14, 1, 2, '#ffd84a')
@@ -612,7 +604,6 @@ export function drawFrame(ctx: Ctx, layers: CityLayers, lots: Lot[], cam: number
     layers.manholes.forEach((wx) => steam(ctx, wx + ox, G + 37, t, wx))
     drawCars(ctx, cam, layers.worldW, t)
   }
-  drawLamps(ctx, cam, viewW)
   if (animate) rain(ctx, viewW, t)
 }
 
@@ -884,25 +875,6 @@ function drawCars(ctx: Ctx, cam: number, worldW: number, t: number) {
     ctx.fill()
     ctx.restore()
   })
-}
-
-/** Postes em primeiro plano (1.3x), com poça de luz na calçada. */
-function drawLamps(ctx: Ctx, cam: number, viewW: number) {
-  const spacing = 170
-  const off = cam * 1.3
-  const first = Math.floor((off - 40) / spacing)
-  for (let i = first; i * spacing - off < viewW + 20; i++) {
-    const x = Math.round(i * spacing + 120 - off)
-    const light = ctx.createRadialGradient(x + 9, G + 6, 0, x + 9, G + 6, 26)
-    light.addColorStop(0, 'rgba(255,214,140,.22)')
-    light.addColorStop(1, 'rgba(255,214,140,0)')
-    ctx.fillStyle = light
-    ctx.fillRect(x - 20, G - 20, 58, 50)
-    rect(ctx, x, 46, 3, H - 46, '#0b0716')
-    rect(ctx, x, 46, 11, 2, '#0b0716')
-    rect(ctx, x + 8, 48, 5, 2, '#0b0716')
-    glow(ctx, '#ffd68c', 8, () => rect(ctx, x + 8, 50, 5, 1, '#ffe6b0'))
-  }
 }
 
 /** Hash determinístico 0..1, para sortear sem guardar estado entre frames. */

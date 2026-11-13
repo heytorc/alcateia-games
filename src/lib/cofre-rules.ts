@@ -1,4 +1,4 @@
-/** Regras puras do Cofre: sorteio do código, conferência de cada tentativa, vez dos jogadores e pontuação. */
+/** Regras puras do Cofre: sorteio do código, conferência de cada tentativa, tempo e pontuação. Todos jogam ao mesmo tempo. */
 import { randomInteger } from "@/lib/utils";
 
 export const MIN_DIGITS = 3;
@@ -7,17 +7,16 @@ export const MAX_DIGITS = 8;
 /** `shared`: o que um jogador acerta fica à vista de todos. `individual`: cada um só vê os próprios acertos. */
 export type VaultMode = "shared" | "individual";
 export type Mark = "ok" | "bad";
-export type Attempt = { playerId: string; guess: string; marks: Mark[] };
+/** `ms`: tempo desde a largada, medido por quem digitou. */
+export type Attempt = { playerId: string; guess: string; marks: Mark[]; ms: number };
 
 export type Vault = {
   code: string;
   digits: number;
   mode: VaultMode;
-  /** Ordem de jogada sorteada; a vez volta ao primeiro depois do último. */
-  order: string[];
-  turn: number;
   attempts: Attempt[];
   solvedBy: string | null;
+  solvedMs: number | null;
 };
 
 /** Código de `digits` dígitos, com zeros à esquerda permitidos. */
@@ -28,32 +27,25 @@ export const drawCode = (digits: number) =>
 export const scoreGuess = (code: string, guess: string): Mark[] =>
   Array.from(code, (digit, index) => (guess[index] === digit ? "ok" : "bad"));
 
-export function createVault(code: string, mode: VaultMode, order: string[]): Vault {
-  return { code, digits: code.length, mode, order, turn: 0, attempts: [], solvedBy: null };
-}
-
-export const currentPlayerId = (v: Vault) => (v.solvedBy ? null : (v.order[v.turn % v.order.length] ?? null));
+export const createVault = (code: string, mode: VaultMode): Vault => ({
+  code, digits: code.length, mode, attempts: [], solvedBy: null, solvedMs: null,
+});
 
 /**
- * Registra a tentativa do jogador da vez e passa a vez. `n` (número de tentativas que o emissor via)
- * descarta uma jogada repetida ou atrasada. Tentativa inválida devolve o mesmo cofre.
+ * Registra a tentativa de qualquer jogador. Depois de aberto, só uma tentativa certa mais rápida
+ * (`ms` menor) troca quem abriu: eventos que chegam em ordem diferente convergem para o mesmo vencedor.
  */
-export function applyGuess(v: Vault, playerId: string, guess: string, n?: number): Vault {
-  if (currentPlayerId(v) !== playerId || (n !== undefined && n !== v.attempts.length)) return v;
+export function applyGuess(v: Vault, playerId: string, guess: string, ms: number): Vault {
   if (guess.length !== v.digits || !/^\d+$/.test(guess)) return v;
   const marks = scoreGuess(v.code, guess);
   const solved = marks.every((mark) => mark === "ok");
+  if (v.solvedBy && !(solved && ms < (v.solvedMs ?? Infinity))) return v;
   return {
     ...v,
-    attempts: [...v.attempts, { playerId, guess, marks }],
-    turn: v.turn + 1,
-    solvedBy: solved ? playerId : null,
+    attempts: [...v.attempts, { playerId, guess, marks, ms }],
+    solvedBy: solved ? playerId : v.solvedBy,
+    solvedMs: solved ? ms : v.solvedMs,
   };
-}
-
-/** Passa a vez de quem sumiu da sala, sem tentativa. `turn` descarta um pedido repetido ou atrasado. */
-export function skipTurn(v: Vault, turn: number): Vault {
-  return v.solvedBy || turn !== v.turn ? v : { ...v, turn: v.turn + 1 };
 }
 
 /** Tentativas que o jogador pode ver: todas no modo compartilhado, só as dele no individual. */
@@ -69,27 +61,32 @@ export function revealedDigits(v: Vault, viewerId: string): Array<string | null>
 }
 
 /**
- * Posições que cada jogador acertou. No modo compartilhado conta quem acertou a posição primeiro; no
- * individual, as posições distintas que o jogador acertou. Quem abriu o cofre tem todas.
+ * Posições que cada jogador acertou. No modo compartilhado conta quem acertou a posição primeiro (menor
+ * `ms`); no individual, as posições distintas que o jogador acertou.
  */
 export function digitScores(v: Vault, ids: readonly string[]): Record<string, number> {
   const scores = Object.fromEntries(ids.map((id) => [id, 0]));
   const claimed = new Set<number>();
   const own = new Map<string, Set<number>>();
-  for (const attempt of v.attempts) {
+  for (const attempt of [...v.attempts].sort((a, b) => a.ms - b.ms)) {
     const mine = own.get(attempt.playerId) ?? new Set<number>();
     own.set(attempt.playerId, mine);
     attempt.marks.forEach((mark, index) => {
       if (mark !== "ok") return;
-      if (v.mode === "shared") {
-        if (claimed.has(index)) return;
-        claimed.add(index);
-        scores[attempt.playerId] = (scores[attempt.playerId] ?? 0) + 1;
-      } else if (!mine.has(index)) {
-        mine.add(index);
-        scores[attempt.playerId] = (scores[attempt.playerId] ?? 0) + 1;
-      }
+      const taken = v.mode === "shared" ? claimed : mine;
+      if (taken.has(index)) return;
+      taken.add(index);
+      scores[attempt.playerId] = (scores[attempt.playerId] ?? 0) + 1;
     });
   }
   return scores;
+}
+
+/** Tempo no formato 1:23,4 (minutos opcionais). */
+export function formatElapsed(ms: number): string {
+  const tenths = Math.floor(Math.max(0, ms) / 100)
+  const minutes = Math.floor(tenths / 600)
+  const seconds = Math.floor((tenths % 600) / 10)
+  const rest = tenths % 10
+  return minutes ? `${minutes}:${String(seconds).padStart(2, "0")},${rest}` : `${seconds},${rest}s`
 }

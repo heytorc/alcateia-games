@@ -2,7 +2,7 @@ import { Delete, Unlock } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { LedDigit, type LedTone } from "@/components/games/LedDigits";
 
-export type CofreCell = { char: string; tone: LedTone };
+export type CofreCell = { char: string; tone: LedTone; /** Pisca o dígito (ex.: posição errada). */ blink?: boolean };
 
 type CofreFrameProps = {
   /** Um dígito de LED por posição do código; `char: " "` deixa o dígito apagado. */
@@ -73,7 +73,7 @@ export function CofreFrame({ cells, locked, canSubmit, opened, status, onDigit, 
           className="mb-4 overflow-hidden rounded-lg border border-black bg-[#050404] px-3 py-3 shadow-[inset_0_0_26px_rgba(0,0,0,.9)]">
           <div className="flex h-[clamp(48px,14vw,78px)] w-full items-center justify-center gap-[2%]" style={{ transform: "skewX(-6deg)" }}>
             {cells.map((cell, index) => (
-              <LedDigit key={index} char={cell.char} tone={cell.tone} className="flex-1" />
+              <LedDigit key={index} char={cell.char} tone={cell.tone} className={cell.blink ? "flex-1 blink" : "flex-1"} />
             ))}
           </div>
           <p className="mt-2 text-center font-game-pixel text-[10px] tracking-[.18em] text-[#1f7a43] uppercase">{status}</p>

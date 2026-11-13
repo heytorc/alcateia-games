@@ -6,7 +6,7 @@ Hub de jogos rápidos, mobile-first e instalável como PWA, no estilo "Neon Arca
 
 - **Sorteio de letras:** histórico em grade, cores alternadas, animação, curto-circuito na borda, som de roleta e contagem regressiva opcional com campainha ao terminar.
 - **Sorteio de peso:** faixa configurável, seletor entre gramas e quilos e resultados sem repetição na sessão ativa.
-- **Cofre:** jogo em sala. Um código secreto tranca o cofre; cada jogador, na sua vez, digita uma combinação no teclado e os dígitos certos acendem em verde e os errados em vermelho. Quem descobre o código primeiro abre o cofre; o pódio ordena por dígitos acertados. Dígitos configuráveis e acertos compartilhados ou individuais.
+- **Cofre:** jogo em sala. Um código secreto tranca o cofre; todos digitam combinações ao mesmo tempo no teclado; os dígitos certos acendem em verde e os errados piscam em vermelho, com som de falha. Um contador mostra quanto tempo levou para abrir. Quem descobre o código primeiro abre o cofre; o pódio ordena por dígitos acertados e mostra o tempo de quem abriu. Dígitos configuráveis e acertos compartilhados ou individuais.
 - **Mega senha:** gire o seletor de canais da TV para sortear palavras únicas do catálogo (tabela `words` do Supabase, com cópia local para uso offline) e preserva o histórico entre sessões até ser reiniciado.
 - **Impostor:** sala multiplayer com uma palavra secreta, um impostor por rodada, votação, nova rodada pelo anfitrião e encerramento da sala.
 - **Tempo certo:** sala multiplayer em que cada participante inicia e pausa seu cronômetro (toque no painel digital de LED, no formato mm:ss:cc) para atingir o tempo alvo. O desvio acumulado decide o pódio final; o anfitrião define rodadas, tempo máximo, precisão e se o cronômetro mostra o tempo enquanto roda ("Ver tempo").
@@ -127,7 +127,7 @@ Sem essas variáveis, os jogos multiplayer exibem a tela "Salas online fora do a
 | Reflexo | `reflexo:<pin>` | `update-config`, `round-start`, `round-score`, `podium-show`, `back-to-lobby`, `game-finished`, `room-closed` |
 | Quem seria mais provável? | `provavel:<pin>` | `update-config`, `round-start`, `vote`, `reveal`, `back-to-lobby`, `game-finished`, `room-closed` |
 | Palavras proibidas | `proibidas:<pin>` | `update-config`, `round-start`, `turn-result`, `back-to-lobby`, `game-finished`, `room-closed` |
-| Cofre | `number:<pin>` | `update-config`, `start`, `guess`, `skip`, `back-to-lobby`, `room-closed` |
+| Cofre | `number:<pin>` | `update-config`, `start`, `guess`, `back-to-lobby`, `room-closed` |
 | Ordem silenciosa | `ordem:<pin>` | `state` (estado completo, do anfitrião), `sync-request`, `play-request`, `room-closed` |
 
 Todos os jogos, exceto a Ordem silenciosa, também trocam `sync-request` e `replay`: quem volta do segundo plano pede ao anfitrião o log de eventos da rodada e se atualiza (ver `src/lib/room-sync.ts`). Presence mantém a lista de jogadores em cada canal. Como os eventos partem dos clientes, não há garantia de sigilo ou anti-trapaça (por exemplo, a palavra do Impostor é transmitida a todos os participantes).

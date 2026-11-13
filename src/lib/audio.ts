@@ -134,3 +134,11 @@ export function playDigSound(enabled: boolean) {
   playNoise(now + 0.1, 0.12, { type: 'bandpass', from: 700, to: 300, peak: 0.22, q: 1.2 })
   playSweep(110, 55, now + 0.04, 0.12, 'sine', 0.3)
 }
+
+/** Combinação errada: buzina grave e descendente, o "peeeen" de falha. */
+export function playFailSound(enabled: boolean) {
+  if (!enabled) return
+  const now = getAudioContext().currentTime
+  playSweep(220, 110, now, 0.55, 'sawtooth', 0.22)
+  playSweep(224, 112, now, 0.55, 'square', 0.1)
+}

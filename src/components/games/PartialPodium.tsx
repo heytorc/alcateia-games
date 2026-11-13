@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { formatStopwatch } from "@/lib/utils";
 
-export type PodiumPlayer = { id: string; name: string; avatar: string; excessMs: number };
+export type PodiumPlayer = { id: string; name: string; avatar: string; excessMs: number; /** Detalhe ao lado do valor (ex.: tempo). */ note?: string };
 
 /** Ids ordenados do menor para o maior desvio acumulado (ou do maior para o menor, com `higherIsBetter`). */
 export const podiumOrder = (players: PodiumPlayer[], higherIsBetter = false) =>
@@ -78,7 +78,7 @@ export function PartialPodium({ players, previousOrder, selfId, higherIsBetter =
                 </span>
               )}
             </span>
-            <small className={`font-game-pixel text-xs ${leader ? "text-[#4b3c16]" : "text-[#ffe14a]"}`}>{format(player.excessMs)}</small>
+            <small className={`font-game-pixel text-xs ${leader ? "text-[#4b3c16]" : "text-[#ffe14a]"}`}>{format(player.excessMs)}{player.note && <span className="ml-2 opacity-80">· {player.note}</span>}</small>
           </motion.li>
         );
       })}

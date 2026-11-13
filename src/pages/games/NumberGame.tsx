@@ -11,6 +11,7 @@ import { ErrorPage } from "@/components/ErrorPage";
 import { CofreFrame, type CofreCell } from "@/components/games/CofreFrame";
 import { GameButton } from "@/components/games/GameButton";
 import { GameIcon } from "@/components/games/GameIcon";
+import { LedSign } from "@/components/games/LedSign";
 import { JoinRoomDialog } from "@/components/games/JoinRoomDialog";
 import { PartialPodium } from "@/components/games/PartialPodium";
 import type { PlayerListItem } from "@/components/games/PlayerList";
@@ -21,17 +22,16 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useOnline } from "@/hooks/useOnline";
 import { isHostRoom, setHostRoom, useRestoreRoom } from "@/hooks/useRestoreRoom";
 import { useRoomWake } from "@/hooks/useRoomWake";
-import { playSuccessHorn, playTickSound, playTimerEndSound } from "@/lib/audio";
+import { playFailSound, playSuccessHorn, playTickSound } from "@/lib/audio";
 import {
   applyGuess,
   createVault,
-  currentPlayerId,
   digitScores,
   drawCode,
+  formatElapsed,
   MAX_DIGITS,
   MIN_DIGITS,
   revealedDigits,
-  skipTurn,
   visibleAttempts,
   type Attempt,
   type Vault,
@@ -40,12 +40,12 @@ import {
 import { supabase } from "@/lib/realtime";
 import { createRoomSync, syncStorageKey, type RoomSync } from "@/lib/room-sync";
 import { useGameStore } from "@/lib/store";
-import { createRoomPin, drawManyUnique, tabClientId } from "@/lib/utils";
+import { createRoomPin, tabClientId } from "@/lib/utils";
 
 type Person = { name: string; avatar: string };
 type RoomConfig = { digits: number; mode: VaultMode };
-type StartPayload = RoomConfig & { code: string; order: string[] };
-type GuessPayload = { playerId: string; guess: string; n: number };
+type StartPayload = RoomConfig & { code: string; startedAt: number };
+type GuessPayload = { playerId: string; guess: string; ms: number };
 
 const digitsSchema = z.coerce
   .number()
@@ -55,7 +55,6 @@ const digitsSchema = z.coerce
 
 /** Quanto tempo as cores da última tentativa ficam no letreiro antes de os dígitos errados sumirem. */
 const FLASH_MS = 1600;
-const ABSENT_PLAYER_MS = 6000;
 
 const modeLabels: Record<VaultMode, string> = { shared: "Compartilhado", individual: "Individual" };
 
@@ -79,11 +78,16 @@ export function NumberGame() {
   const [known, setKnown] = useState<Record<string, Person>>({});
   const [vault, setVault] = useState<Vault | null>(null);
   const [typed, setTyped] = useState("");
+  /** Largada da partida (relógio do anfitrião) e o tempo corrente, para o contador. */
+  const [startedAt, setStartedAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   /** Última tentativa visível, colorida no letreiro por um instante. */
   const [flash, setFlash] = useState<Attempt | null>(null);
   const playerId = useRef(tabClientId());
   const channelRef = useRef<RealtimeChannel | null>(null);
   const syncRef = useRef<RoomSync | null>(null);
+  const startedAtRef = useRef(0);
+  startedAtRef.current = startedAt;
   const vaultRef = useRef(vault);
   vaultRef.current = vault;
   const settingsSnapshot = useRef<RoomConfig | null>(null);
@@ -102,8 +106,6 @@ export function NumberGame() {
   }));
   const people = useMemo(() => ({ ...known, ...players }), [known, players]);
   const playerIds = Object.keys(players);
-  const turnId = vault ? currentPlayerId(vault) : null;
-  const isMyTurn = turnId === playerId.current;
   const solved = Boolean(vault?.solvedBy);
   const nameOf = (id: string | null | undefined) => (id ? (people[id]?.name ?? "Jogador que saiu") : "");
 
@@ -140,11 +142,11 @@ export function NumberGame() {
           applyConfig(payload);
           setTyped("");
           setFlash(null);
-          setVault(createVault(payload.code, payload.mode, payload.order));
+          setStartedAt(payload.startedAt);
+          setVault(createVault(payload.code, payload.mode));
         },
         guess: (payload: GuessPayload) =>
-          setVault((current) => current && applyGuess(current, payload.playerId, payload.guess, payload.n)),
-        skip: (payload: { turn: number }) => setVault((current) => current && skipTurn(current, payload.turn)),
+          setVault((current) => current && applyGuess(current, payload.playerId, payload.guess, payload.ms)),
         "back-to-lobby": () => {
           resetLocal();
           setLastRoom(room, "number");
@@ -192,46 +194,45 @@ export function NumberGame() {
     };
   }, [joined, profile.avatar, profile.name, room, reconnectKey]);
 
-  // Cada tentativa nova (de qualquer jogador): cores no letreiro por um instante, som e, ao abrir, festa.
+  // Minha tentativa nova: cores no letreiro por um instante; errada, buzina e dígitos errados piscando.
   const seenAttempts = useRef(0);
+  const seenSolved = useRef<string | null>(null);
   useEffect(() => {
     const count = vault?.attempts.length ?? 0;
     const previous = seenAttempts.current;
     seenAttempts.current = count;
-    if (!vault || count <= previous) return;
-    const last = vault.attempts[count - 1];
-    const visible = visibleAttempts(vault, playerId.current).includes(last);
-    if (vault.solvedBy) {
+    if (!vault) {
+      seenSolved.current = null;
+      return;
+    }
+    if (vault.solvedBy && vault.solvedBy !== seenSolved.current) {
+      seenSolved.current = vault.solvedBy;
       playSuccessHorn(soundEnabled);
       confetti({ particleCount: 160, spread: 90, origin: { y: 0.55 }, colors: ["#ffd84a", "#ffb000", "#fff3b0", "#39ff7a"] });
       if ("vibrate" in navigator) navigator.vibrate([100, 60, 100, 60, 200]);
-    } else if (visible) {
-      if (last.marks.some((mark) => mark === "ok")) playTickSound(soundEnabled);
-      else playTimerEndSound(soundEnabled);
+      return;
     }
-    if (!visible) return;
+    const last = vault.attempts[count - 1];
+    if (count <= previous || !last || last.playerId !== playerId.current) return;
+    playFailSound(soundEnabled);
+    if ("vibrate" in navigator) navigator.vibrate([200, 80, 200]);
     setFlash(last);
     const timer = setTimeout(() => setFlash(null), FLASH_MS);
     return () => clearTimeout(timer);
   }, [vault]);
 
-  // Jogador que sumiu na própria vez trava a sala: o anfitrião passa a vez dele após uma folga.
-  const turnKey = vault && turnId ? vault.turn : null;
-  const turnPresent = turnId === null || turnId in players;
+  // Contador: corre até alguém abrir o cofre.
   useEffect(() => {
-    if (!isHost || turnKey === null || turnPresent) return;
-    const timer = setTimeout(() => {
-      const current = vaultRef.current;
-      if (!current) return;
-      setVault(skipTurn(current, current.turn));
-      void syncRef.current?.send("skip", { turn: current.turn });
-    }, ABSENT_PLAYER_MS);
-    return () => clearTimeout(timer);
-  }, [isHost, turnKey, turnPresent]);
+    if (!vault || solved) return;
+    const interval = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(interval);
+  }, [Boolean(vault), solved]);
+  const elapsedMs = vault ? (vault.solvedMs ?? Math.max(0, now - startedAt)) : 0;
 
   const pressDigit = (digit: string) => {
     const current = vaultRef.current;
-    if (!current || !isMyTurn || current.solvedBy) return;
+    if (!current || current.solvedBy) return;
+    setFlash(null);
     setTyped((text) => {
       if (text.length >= current.digits) return text;
       playTickSound(soundEnabled);
@@ -241,18 +242,18 @@ export function NumberGame() {
   const deleteDigit = () => setTyped((text) => text.slice(0, -1));
   const submit = async () => {
     const current = vaultRef.current;
-    if (!current || currentPlayerId(current) !== playerId.current || typed.length !== current.digits) return;
-    const payload: GuessPayload = { playerId: playerId.current, guess: typed, n: current.attempts.length };
-    setVault(applyGuess(current, payload.playerId, payload.guess, payload.n));
+    if (!current || current.solvedBy || typed.length !== current.digits) return;
+    const payload: GuessPayload = { playerId: playerId.current, guess: typed, ms: Date.now() - startedAtRef.current };
+    setVault(applyGuess(current, payload.playerId, payload.guess, payload.ms));
     setTyped("");
     await syncRef.current?.send("guess", payload);
   };
 
-  // Teclado físico na vez do jogador.
+  // Teclado físico.
   const keysRef = useRef({ pressDigit, deleteDigit, submit });
   keysRef.current = { pressDigit, deleteDigit, submit };
   useEffect(() => {
-    if (!isMyTurn || solved) return;
+    if (!vault || solved) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (/^\d$/.test(event.key)) keysRef.current.pressDigit(event.key);
@@ -261,29 +262,35 @@ export function NumberGame() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isMyTurn, solved]);
+  }, [Boolean(vault), solved]);
 
-  // Letreiro: dígitos descobertos em verde e fixos; a digitação em âmbar; a tentativa recém-feita em verde e vermelho.
+  // Letreiro: dígitos descobertos em verde e fixos; a digitação em âmbar; a tentativa errada em verde e vermelho piscando.
   const cells: CofreCell[] = useMemo(() => {
     if (!vault) return [];
     const revealed = revealedDigits(vault, playerId.current);
     return Array.from({ length: vault.digits }, (_, index): CofreCell => {
       if (solved) return { char: vault.code[index], tone: "green" };
-      if (flash) return { char: flash.guess[index], tone: flash.marks[index] === "ok" ? "green" : "red" };
-      if (isMyTurn && index < typed.length) return { char: typed[index], tone: "amber" };
+      if (flash) {
+        const ok = flash.marks[index] === "ok";
+        return { char: flash.guess[index], tone: ok ? "green" : "red", blink: !ok };
+      }
+      if (index < typed.length) return { char: typed[index], tone: "amber" };
       const known = revealed[index];
       return known ? { char: known, tone: "green" } : { char: " ", tone: "amber" };
     });
-  }, [vault, solved, flash, isMyTurn, typed]);
+  }, [vault, solved, flash, typed]);
 
-  const scores = useMemo(() => (vault ? digitScores(vault, vault.order) : {}), [vault]);
+  const scores = useMemo(() => (vault ? digitScores(vault, Object.keys(people)) : {}), [vault, people]);
   /** Dobra a contagem para o desempate: no mesmo número de dígitos, quem abriu o cofre fica na frente. */
-  const podiumPlayers = (vault?.order ?? []).map((id) => ({
-    id,
-    name: nameOf(id),
-    avatar: people[id]?.avatar ?? "🐺",
-    excessMs: (scores[id] ?? 0) * 2 + (vault?.solvedBy === id ? 1 : 0),
-  }));
+  const podiumPlayers = Object.keys(people)
+    .filter((id) => id in players || (scores[id] ?? 0) > 0 || vault?.solvedBy === id)
+    .map((id) => ({
+      id,
+      name: nameOf(id),
+      avatar: people[id]?.avatar ?? "🐺",
+      excessMs: (scores[id] ?? 0) * 2 + (vault?.solvedBy === id ? 1 : 0),
+      note: vault?.solvedBy === id && vault.solvedMs !== null ? formatElapsed(vault.solvedMs) : undefined,
+    }));
 
   const validateConfig = () => {
     const parsed = digitsSchema.safeParse(digitsInput);
@@ -342,11 +349,13 @@ export function NumberGame() {
   /** O anfitrião sorteia o código (que ninguém vê no letreiro) e a ordem de jogada. */
   const start = async () => {
     const config = sharedRef.current.config;
-    const payload: StartPayload = { ...config, code: drawCode(config.digits), order: drawManyUnique(playerIds, playerIds.length) };
+    const payload: StartPayload = { ...config, code: drawCode(config.digits), startedAt: Date.now() };
     setTyped("");
     setFlash(null);
     seenAttempts.current = 0;
-    setVault(createVault(payload.code, payload.mode, payload.order));
+    setStartedAt(payload.startedAt);
+    setNow(payload.startedAt);
+    setVault(createVault(payload.code, payload.mode));
     await syncRef.current?.send("start", payload);
   };
 
@@ -469,7 +478,7 @@ export function NumberGame() {
               <GameIcon id="number" size={57} />
               <h2 className={roomHeadingClass}>Abra o cofre</h2>
               <p className={roomDescriptionClass}>
-                Um código secreto trava o cofre. Na sua vez, digite uma combinação: os dígitos certos acendem em verde,
+                Um código secreto trava o cofre. Todos digitam ao mesmo tempo: os dígitos certos acendem em verde,
                 os errados em vermelho. Quem descobrir o código primeiro abre o cofre.
               </p>
               {!profile.name && (
@@ -590,29 +599,27 @@ export function NumberGame() {
     );
 
   const history = visibleAttempts(vault, playerId.current).slice().reverse();
-  const status = solved ? "COFRE ABERTO!" : isMyTurn ? "SUA VEZ" : `VEZ DE ${nameOf(turnId).toUpperCase()}`;
+  const status = solved ? "COFRE ABERTO!" : "DIGITE O CÓDIGO";
   return (
     <Shell>
       <main className={roomPageClass}>
         <GameHeader title="Cofre" room={{ pin: room, players: roster }} leave={leaveConfig} />
         <section className="mx-auto my-[25px] mb-[60px] flex w-full max-w-[560px] flex-col items-center gap-6">
-          {solved ? (
+          {solved && (
             <h2 className="neon-text text-center font-game-pixel text-xl">
               {people[vault.solvedBy!]?.avatar} {nameOf(vault.solvedBy)} abriu o cofre!
             </h2>
-          ) : isMyTurn ? (
-            <div className="neon-box blink w-full max-w-[380px] rounded-md px-4 py-3 text-center" role="status">
-              <span className="neon-text font-game-pixel text-xl tracking-[.1em]">SUA VEZ!</span>
-            </div>
-          ) : (
-            <p className="text-center text-sm text-[#c9c4dd]" aria-live="polite">
-              Vez de {people[turnId ?? ""]?.avatar} <strong>{nameOf(turnId)}</strong>
-            </p>
           )}
+          <div className="flex flex-col items-center gap-1 text-center">
+            <span className="text-sm text-[#c9c4dd]">{solved ? "Tempo para abrir" : "Tempo"}</span>
+            <LedSign color={solved ? "#ffd84a" : "#00e5ff"} blinkEvery={solved ? 2 : 4} className="min-w-[140px] text-center">
+              {formatElapsed(elapsedMs)}
+            </LedSign>
+          </div>
 
           <CofreFrame
             cells={cells}
-            locked={!isMyTurn || solved}
+            locked={solved}
             canSubmit={typed.length === vault.digits}
             opened={solved}
             status={status}

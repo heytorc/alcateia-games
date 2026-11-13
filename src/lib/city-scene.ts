@@ -17,7 +17,7 @@ export type LotKind = 'biblioteca' | 'mercearia' | 'banco' | 'torre' | 'bar' | '
 export const lotSpec: Record<GameId, { kind: LotKind; w: number; h: number; sign: string } | null> = {
   letters: { kind: 'biblioteca', w: 84, h: 78, sign: 'BIBLIOTECA' },
   weight: { kind: 'mercearia', w: 76, h: 92, sign: 'PESO' },
-  number: { kind: 'banco', w: 86, h: 100, sign: 'BANCO' },
+  number: { kind: 'banco', w: 86, h: 70, sign: 'BANCO' },
   time: { kind: 'torre', w: 46, h: 124, sign: 'TEMPO' },
   impostor: { kind: 'bar', w: 84, h: 88, sign: 'BAR' },
   password: { kind: 'tvs', w: 80, h: 88, sign: 'TV' },
