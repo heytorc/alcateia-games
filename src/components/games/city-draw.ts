@@ -327,12 +327,15 @@ function drawLot(ctx: Ctx, sg: Ctx, lot: Lot, rnd: () => number) {
         rect(ctx, colX - 1, G - 7, 7, 3, '#b8b4cf')
       }
       rect(ctx, x - 2, G - 4, w, 4, '#8f8ba8')
-      // vitrine escura à esquerda
-      rect(ctx, x + 8, G - 34, 24, 22, '#07040f')
-      // porta de entrada e painel do letreiro de LED
-      rect(ctx, x + w - 22, G - 26, 12, 26, '#07040f')
-      rect(ctx, x + w - 13, G - 14, 1, 2, '#ffd84a')
-      rect(ctx, x + 38, G - 40, 12, 9, '#07040f')
+      // vitrines entre as colunas (a do meio guarda o cifrão de LED) e porta entre a 3ª e a 4ª coluna
+      ;[x + 12, x + 35].forEach((wx) => {
+        rect(ctx, wx - 1, G - 36, 12, 22, '#b8b4cf')
+        rect(ctx, wx, G - 35, 10, 20, '#07040f')
+        rect(ctx, wx + 4, G - 35, 2, 20, '#2a2840')
+      })
+      rect(ctx, x + 56, G - 26, 13, 26, '#b8b4cf')
+      rect(ctx, x + 57, G - 25, 11, 25, '#07040f')
+      rect(ctx, x + 66, G - 13, 1, 2, '#ffd84a')
       neonSign(sg, sign, cx - 2, G - 66, '#ffd84a')
       break
     }
@@ -792,7 +795,7 @@ function drawDynamic(ctx: Ctx, lot: Lot, sx: number, t: number, animate: boolean
         ctx.font = FONT
         glow(ctx, '#ffd84a', 4, () => {
           ctx.fillStyle = '#ffd84a'
-          textAt(ctx, '$', Math.round(sx + 44 - ctx.measureText('$').width / 2), G - 32.5)
+          textAt(ctx, '$', Math.round(sx + 40 - ctx.measureText('$').width / 2), G - 21)
         })
       }
       break
@@ -1026,7 +1029,7 @@ const SKATERS = [
 const DOORS: Partial<Record<Lot['kind'], (lot: Lot) => number>> = {
   biblioteca: (lot) => lot.x + lot.w / 2,
   mercearia: (lot) => lot.x + lot.w / 2 - 2,
-  banco: (lot) => lot.x + lot.w - 16,
+  banco: (lot) => lot.x + 62,
   torre: (lot) => lot.x + lot.w / 2,
   bar: (lot) => lot.x + 46,
   cassino: (lot) => lot.x + lot.w / 2 - 2,
