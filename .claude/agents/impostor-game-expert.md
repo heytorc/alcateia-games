@@ -11,10 +11,11 @@ Você é especialista no **Impostor** (rota `/impostor`). Responda e escreva tex
 
 ## Protocolo (canal `impostor:<pin>`)
 - **Presence** (`track {name, avatar, pin}`): lista de jogadores; o anfitrião é quem criou a sala.
-- **Broadcast:** `round-start {impostorId, word}` · `vote {voterId, votedId}` · `end-round` · `room-closed`.
+- **Broadcast:** `round-start {impostorId, word, firstId, hint}` (eventos via `createRoomSync`, que ressincroniza quem volta do segundo plano) · `vote {voterId, votedId}` · `end-round` · `room-closed`.
 - Fases locais: `LOBBY → PLAYING → RESULTS → LOBBY`.
 
 ## Invariantes
+- Cada rodada sorteia `firstId` (quem começa). Se for o impostor, `hint` é uma palavra vizinha da secreta na lista da categoria (`pickHint` em `src/lib/impostor-rules.ts`, com teste); sem categoria conhecida, não há dica. O id do jogador é `tabClientId()`.
 - Um impostor por rodada; só o anfitrião inicia rodada, encerra rodada e fecha a sala.
 - `usedWords` (ref) evita repetir palavra até esgotar a lista de `useWords`.
 - Ao editar `impostor-words.ts`: palavras de um conceito só, maiúsculas, hífen no lugar de espaço, sem duplicatas nem entre categorias (`npm test`); público <33 anos. O app lê a tabela `words` (`game = 'impostor'`): reaplique a semente no banco (`insert … on conflict (game, word) do nothing`) após editar.
