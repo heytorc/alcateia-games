@@ -4,7 +4,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import confetti from "canvas-confetti";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { GameActions, GameDialogFooter, GameHeader, NumberStepper, Shell } from "@/components";
+import { GameActions, GameDialogFooter, GameHeader, NumberStepper, Shell, Switch } from "@/components";
+import { IconCounter } from "@/components/IconCounter";
 import { Label } from "@/components/ui/label";
 import { BottomSheet } from "@/components/BottomSheet";
 import { ErrorPage } from "@/components/ErrorPage";
@@ -28,6 +29,9 @@ import {
   createVault,
   digitScores,
   drawCode,
+  exhausted,
+  isOut,
+  livesLeft,
   formatElapsed,
   MAX_DIGITS,
   MIN_DIGITS,
@@ -43,8 +47,8 @@ import { useGameStore } from "@/lib/store";
 import { createRoomPin, tabClientId } from "@/lib/utils";
 
 type Person = { name: string; avatar: string };
-type RoomConfig = { digits: number; mode: VaultMode };
-type StartPayload = RoomConfig & { code: string; startedAt: number };
+type RoomConfig = { digits: number; mode: VaultMode; livesEnabled: boolean; lives: number };
+type StartPayload = RoomConfig & { code: string; startedAt: number; playerIds: string[] };
 type GuessPayload = { playerId: string; guess: string; ms: number };
 
 const digitsSchema = z.coerce
@@ -64,6 +68,9 @@ export function NumberGame() {
   const [digits, setDigits] = useState(4);
   const [digitsInput, setDigitsInput] = useState("4");
   const [mode, setMode] = useState<VaultMode>("shared");
+  // Vidas por participante: desligadas por padrão (tentativas ilimitadas).
+  const [livesEnabled, setLivesEnabled] = useState(false);
+  const [lives, setLives] = useState(3);
   const [digitsError, setDigitsError] = useState<string>();
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -107,16 +114,22 @@ export function NumberGame() {
   const people = useMemo(() => ({ ...known, ...players }), [known, players]);
   const playerIds = Object.keys(players);
   const solved = Boolean(vault?.solvedBy);
+  const noLives = Boolean(vault && exhausted(vault));
+  /** Partida encerrada: alguém abriu o cofre ou todos ficaram sem vidas. */
+  const over = solved || noLives;
+  const myOut = Boolean(vault && isOut(vault, playerId.current));
   const nameOf = (id: string | null | undefined) => (id ? (people[id]?.name ?? "Jogador que saiu") : "");
 
   const applyConfig = (config: RoomConfig) => {
     setDigits(config.digits);
     setDigitsInput(String(config.digits));
     setMode(config.mode);
+    setLivesEnabled(config.livesEnabled ?? false);
+    setLives(config.lives ?? 3);
     setDigitsError(undefined);
   };
-  const sharedRef = useRef({ isHost, config: { digits, mode } });
-  sharedRef.current = { isHost, config: { digits, mode } };
+  const sharedRef = useRef({ isHost, config: { digits, mode, livesEnabled, lives } });
+  sharedRef.current = { isHost, config: { digits, mode, livesEnabled, lives } };
 
   const resetLocal = () => {
     setVault(null);
@@ -143,7 +156,7 @@ export function NumberGame() {
           setTyped("");
           setFlash(null);
           setStartedAt(payload.startedAt);
-          setVault(createVault(payload.code, payload.mode));
+          setVault(createVault(payload.code, payload.mode, payload.playerIds, payload.livesEnabled ? payload.lives : null));
         },
         guess: (payload: GuessPayload) =>
           setVault((current) => current && applyGuess(current, payload.playerId, payload.guess, payload.ms)),
@@ -223,15 +236,15 @@ export function NumberGame() {
 
   // Contador: corre até alguém abrir o cofre.
   useEffect(() => {
-    if (!vault || solved) return;
+    if (!vault || over) return;
     const interval = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(interval);
-  }, [Boolean(vault), solved]);
-  const elapsedMs = vault ? (vault.solvedMs ?? Math.max(0, now - startedAt)) : 0;
+  }, [Boolean(vault), over]);
+  const elapsedMs = vault ? (vault.solvedMs ?? (noLives ? (vault.attempts.at(-1)?.ms ?? 0) : Math.max(0, now - startedAt))) : 0;
 
   const pressDigit = (digit: string) => {
     const current = vaultRef.current;
-    if (!current || current.solvedBy) return;
+    if (!current || current.solvedBy || exhausted(current) || isOut(current, playerId.current)) return;
     setFlash(null);
     setTyped((text) => {
       if (text.length >= current.digits) return text;
@@ -242,7 +255,7 @@ export function NumberGame() {
   const deleteDigit = () => setTyped((text) => text.slice(0, -1));
   const submit = async () => {
     const current = vaultRef.current;
-    if (!current || current.solvedBy || typed.length !== current.digits) return;
+    if (!current || current.solvedBy || isOut(current, playerId.current) || typed.length !== current.digits) return;
     const payload: GuessPayload = { playerId: playerId.current, guess: typed, ms: Date.now() - startedAtRef.current };
     setVault(applyGuess(current, payload.playerId, payload.guess, payload.ms));
     setTyped("");
@@ -253,7 +266,7 @@ export function NumberGame() {
   const keysRef = useRef({ pressDigit, deleteDigit, submit });
   keysRef.current = { pressDigit, deleteDigit, submit };
   useEffect(() => {
-    if (!vault || solved) return;
+    if (!vault || over || myOut) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (/^\d$/.test(event.key)) keysRef.current.pressDigit(event.key);
@@ -262,7 +275,7 @@ export function NumberGame() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [Boolean(vault), solved]);
+  }, [Boolean(vault), over, myOut]);
 
   // Letreiro: dígitos descobertos em verde e fixos; a digitação em âmbar; a tentativa errada em verde e vermelho piscando.
   const cells: CofreCell[] = useMemo(() => {
@@ -270,6 +283,7 @@ export function NumberGame() {
     const revealed = revealedDigits(vault, playerId.current);
     return Array.from({ length: vault.digits }, (_, index): CofreCell => {
       if (solved) return { char: vault.code[index], tone: "green" };
+      if (noLives) return { char: vault.code[index], tone: "red" };
       if (flash) {
         const ok = flash.marks[index] === "ok";
         return { char: flash.guess[index], tone: ok ? "green" : "red", blink: !ok };
@@ -278,7 +292,7 @@ export function NumberGame() {
       const known = revealed[index];
       return known ? { char: known, tone: "green" } : { char: " ", tone: "amber" };
     });
-  }, [vault, solved, flash, typed]);
+  }, [vault, solved, noLives, flash, typed]);
 
   const scores = useMemo(() => (vault ? digitScores(vault, Object.keys(people)) : {}), [vault, people]);
   /** Dobra a contagem para o desempate: no mesmo número de dígitos, quem abriu o cofre fica na frente. */
@@ -296,7 +310,7 @@ export function NumberGame() {
     const parsed = digitsSchema.safeParse(digitsInput);
     setDigitsError(parsed.success ? undefined : parsed.error.issues[0]?.message);
     if (!parsed.success) return null;
-    const next: RoomConfig = { digits: parsed.data, mode };
+    const next: RoomConfig = { digits: parsed.data, mode, livesEnabled, lives };
     applyConfig(next);
     return next;
   };
@@ -349,13 +363,13 @@ export function NumberGame() {
   /** O anfitrião sorteia o código (que ninguém vê no letreiro) e a ordem de jogada. */
   const start = async () => {
     const config = sharedRef.current.config;
-    const payload: StartPayload = { ...config, code: drawCode(config.digits), startedAt: Date.now() };
+    const payload: StartPayload = { ...config, code: drawCode(config.digits), startedAt: Date.now(), playerIds };
     setTyped("");
     setFlash(null);
     seenAttempts.current = 0;
     setStartedAt(payload.startedAt);
     setNow(payload.startedAt);
-    setVault(createVault(payload.code, payload.mode));
+    setVault(createVault(payload.code, payload.mode, playerIds, payload.livesEnabled ? payload.lives : null));
     await syncRef.current?.send("start", payload);
   };
 
@@ -412,6 +426,13 @@ export function NumberGame() {
           </small>
         )}
       </div>
+      <div className="flex w-full items-center justify-between gap-4 text-base font-bold text-[#c2b9d1]">
+        <span>Vidas por participante</span>
+        <Switch checked={livesEnabled} onChange={setLivesEnabled} />
+      </div>
+      {livesEnabled && (
+        <IconCounter label="Vidas" value={lives} min={1} max={10} onChange={setLives} icon={<GameIcon id="vida" size={32} />} />
+      )}
       <div className="w-full text-base font-bold text-[#c2b9d1]">
         <span>Acertos</span>
         <div className="mt-2 flex w-full overflow-hidden rounded-md">
@@ -557,6 +578,10 @@ export function NumberGame() {
                 <dt className="text-[10px] tracking-[.12em] text-[#9b97b2] uppercase">Acertos</dt>
                 <dd className="mt-1 font-game-pixel text-sm text-white">{modeLabels[mode]}</dd>
               </div>
+              <div className="rounded-md border border-[#4a34a8] bg-[#150d33] p-2.5">
+                <dt className="text-[10px] tracking-[.12em] text-[#9b97b2] uppercase">Vidas</dt>
+                <dd className="mt-1 font-game-pixel text-sm text-white">{livesEnabled ? lives : "Ilimitadas"}</dd>
+              </div>
             </dl>
             {isHost ? (
               <GameActions>
@@ -599,7 +624,7 @@ export function NumberGame() {
     );
 
   const history = visibleAttempts(vault, playerId.current).slice().reverse();
-  const status = solved ? "COFRE ABERTO!" : "DIGITE O CÓDIGO";
+  const status = solved ? "COFRE ABERTO!" : noLives ? "TRANCADO" : myOut ? "SEM VIDAS" : "DIGITE O CÓDIGO";
   return (
     <Shell>
       <main className={roomPageClass}>
@@ -610,16 +635,32 @@ export function NumberGame() {
               {people[vault.solvedBy!]?.avatar} {nameOf(vault.solvedBy)} abriu o cofre!
             </h2>
           )}
+          {noLives && <h2 className="text-center font-game-pixel text-xl text-[#ff8fab]">Ninguém abriu o cofre.</h2>}
           <div className="flex flex-col items-center gap-1 text-center">
-            <span className="text-sm text-[#c9c4dd]">{solved ? "Tempo para abrir" : "Tempo"}</span>
+            <span className="text-sm text-[#c9c4dd]">{solved ? "Tempo para abrir" : noLives ? "Tempo até o fim" : "Tempo"}</span>
             <LedSign color={solved ? "#ffd84a" : "#00e5ff"} blinkEvery={solved ? 2 : 4} className="min-w-[140px] text-center">
               {formatElapsed(elapsedMs)}
             </LedSign>
           </div>
 
+          {vault.lives && (
+            <ul aria-label="Vidas dos jogadores" className="flex flex-wrap justify-center gap-2">
+              {Object.keys(vault.lives).map((id) => (
+                <li
+                  key={id}
+                  className={`flex items-center gap-1 rounded-full border px-3 py-1 text-xs ${isOut(vault, id) ? "border-[#4a34a8] text-[#9b97b2] opacity-60" : id === playerId.current ? "border-(--neon-cyan) text-white" : "border-[#4a34a8] text-[#e6e2f3]"}`}>
+                  {people[id]?.avatar} {nameOf(id)}
+                  <span className="ml-1 flex items-center gap-0.5">
+                    <GameIcon id="vida" size={14} /> {livesLeft(vault, id)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <CofreFrame
             cells={cells}
-            locked={solved}
+            locked={over || myOut}
             canSubmit={typed.length === vault.digits}
             opened={solved}
             status={status}
@@ -628,7 +669,7 @@ export function NumberGame() {
             onSubmit={submit}
           />
 
-          {solved ? (
+          {over ? (
             <>
               <p className="text-sm text-[#c9c4dd]">
                 O código era <strong className="font-game-pixel text-[#ffd84a]">{vault.code}</strong>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyGuess, createVault, digitScores, drawCode, formatElapsed, revealedDigits, scoreGuess, visibleAttempts } from "./cofre-rules";
+import { applyGuess, createVault, exhausted, isOut, livesLeft, digitScores, drawCode, formatElapsed, revealedDigits, scoreGuess, visibleAttempts } from "./cofre-rules";
 
 describe("cofre", () => {
   it("sorteia um código com a quantidade de dígitos pedida", () => {
@@ -59,5 +59,28 @@ describe("cofre", () => {
   it("formata o tempo", () => {
     expect(formatElapsed(12_340)).toBe("12,3s");
     expect(formatElapsed(83_400)).toBe("1:23,4");
+  });
+
+  it("com vidas, cada erro tira uma e quem zera não joga mais", () => {
+    let v = createVault("1234", "shared", ["a", "b"], 2);
+    v = applyGuess(v, "a", "0000", 1);
+    expect(livesLeft(v, "a")).toBe(1);
+    expect(livesLeft(v, "b")).toBe(2);
+    v = applyGuess(v, "a", "0000", 2);
+    expect(isOut(v, "a")).toBe(true);
+    expect(applyGuess(v, "a", "1234", 3)).toBe(v);
+    expect(exhausted(v)).toBe(false);
+    v = applyGuess(applyGuess(v, "b", "0000", 4), "b", "1111", 5);
+    expect(exhausted(v)).toBe(true);
+  });
+
+  it("sem vidas configuradas as tentativas são ilimitadas, e acertar não custa vida", () => {
+    let v = createVault("1234", "shared", ["a"]);
+    for (let i = 0; i < 20; i++) v = applyGuess(v, "a", "0000", i);
+    expect(isOut(v, "a")).toBe(false);
+    expect(livesLeft(v, "a")).toBeNull();
+    const w = applyGuess(createVault("1234", "shared", ["a"], 1), "a", "1234", 5);
+    expect(livesLeft(w, "a")).toBe(1);
+    expect(exhausted(w)).toBe(false);
   });
 });

@@ -17,6 +17,8 @@ export type Vault = {
   attempts: Attempt[];
   solvedBy: string | null;
   solvedMs: number | null;
+  /** Vidas por jogador (cada combinação errada tira uma); `null` = tentativas ilimitadas. */
+  lives: Record<string, number> | null;
 };
 
 /** Código de `digits` dígitos, com zeros à esquerda permitidos. */
@@ -27,16 +29,26 @@ export const drawCode = (digits: number) =>
 export const scoreGuess = (code: string, guess: string): Mark[] =>
   Array.from(code, (digit, index) => (guess[index] === digit ? "ok" : "bad"));
 
-export const createVault = (code: string, mode: VaultMode): Vault => ({
+export const createVault = (code: string, mode: VaultMode, playerIds: readonly string[] = [], maxLives: number | null = null): Vault => ({
   code, digits: code.length, mode, attempts: [], solvedBy: null, solvedMs: null,
+  lives: maxLives === null ? null : Object.fromEntries(playerIds.map((id) => [id, maxLives])),
 });
+
+/** Vidas que sobram ao jogador; `null` com tentativas ilimitadas. Quem não estava na largada fica sem vidas. */
+export const livesLeft = (v: Vault, id: string): number | null => (v.lives ? (v.lives[id] ?? 0) : null);
+
+/** Jogador sem vidas não joga mais. */
+export const isOut = (v: Vault, id: string) => v.lives !== null && (v.lives[id] ?? 0) <= 0;
+
+/** Ninguém abriu o cofre e todos ficaram sem vidas. */
+export const exhausted = (v: Vault) => v.lives !== null && !v.solvedBy && Object.values(v.lives).every((n) => n <= 0);
 
 /**
  * Registra a tentativa de qualquer jogador. Depois de aberto, só uma tentativa certa mais rápida
  * (`ms` menor) troca quem abriu: eventos que chegam em ordem diferente convergem para o mesmo vencedor.
  */
 export function applyGuess(v: Vault, playerId: string, guess: string, ms: number): Vault {
-  if (guess.length !== v.digits || !/^\d+$/.test(guess)) return v;
+  if (guess.length !== v.digits || !/^\d+$/.test(guess) || isOut(v, playerId)) return v;
   const marks = scoreGuess(v.code, guess);
   const solved = marks.every((mark) => mark === "ok");
   if (v.solvedBy && !(solved && ms < (v.solvedMs ?? Infinity))) return v;
@@ -45,6 +57,7 @@ export function applyGuess(v: Vault, playerId: string, guess: string, ms: number
     attempts: [...v.attempts, { playerId, guess, marks, ms }],
     solvedBy: solved ? playerId : v.solvedBy,
     solvedMs: solved ? ms : v.solvedMs,
+    lives: v.lives && !solved ? { ...v.lives, [playerId]: v.lives[playerId] - 1 } : v.lives,
   };
 }
 
