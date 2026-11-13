@@ -11,7 +11,9 @@ import { Label } from "@/components/ui/label";
 import { playStopwatchStopSound, playSuccessHorn, playTimerEndSound } from "@/lib/audio";
 import { supabase } from "@/lib/realtime";
 import { classifyTap, drawWaitMs, MAX_REACTION_MS, type TapResult } from "@/lib/reflexo-rules";
-import { createClientId, createRoomPin, formatStopwatch } from "@/lib/utils";
+import { createRoomPin, formatStopwatch, tabClientId } from "@/lib/utils";
+import { createRoomSync, syncStorageKey, type RoomSync } from "@/lib/room-sync";
+import { useRoomWake } from "@/hooks/useRoomWake";
 import { GameIcon } from "@/components/games/GameIcon";
 import { RoomDirectory } from "@/components/games/RoomDirectory";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -33,7 +35,7 @@ type Score = { id: string; name: string; avatar: string; excessMs: number };
 type RoundStartPayload = { round: number; totalRounds: number; waitMs: number; scores: Score[] };
 type PodiumPayload = { round: number; scores: Score[] };
 type PodiumState = PodiumPayload & { previous: string[] | null };
-type ReflexoPresence = { name: string; avatar: string; roundStart?: RoundStartPayload };
+type ReflexoPresence = { name: string; avatar: string };
 type RoomConfig = { roundCount: number };
 /** Cena do lobo: esperando o bife, bife no pote, comendo (acertou) ou triste (largou antes ou demorou). */
 type Phase = "espera" | "bife" | "comendo" | "triste";
@@ -53,23 +55,15 @@ const resultText = (result: TapResult) =>
       ? "Muito lento!"
       : "Largou antes do bife!";
 
-type StageProps = { phase: Phase; round: number; steakShown: boolean; onSteakVisible: () => void; onTap: () => void };
+type StageProps = { phase: Phase; round: number; onSteakVisible: () => void; onTap: () => void };
 
-/**
- * As cenas ficam empilhadas (espera → bife → resultado): cada uma entra por cima da anterior, que continua
- * visível enquanto a nova carrega, então a troca nunca pisca em branco.
- */
-function ReflexoStage({ phase, round, steakShown, onSteakVisible, onTap }: StageProps) {
+/** Uma única cena por vez: os GIFs têm transparência, então empilhar cenas deixaria as anteriores visíveis. */
+function ReflexoStage({ phase, round, onSteakVisible, onTap }: StageProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     if (!event.repeat) onTap();
   };
-  const layers: Phase[] = [
-    "espera",
-    ...(phase === "bife" || steakShown ? (["bife"] as const) : []),
-    ...(phase === "comendo" || phase === "triste" ? [phase] : []),
-  ];
   return (
     <button
       type="button"
@@ -80,18 +74,16 @@ function ReflexoStage({ phase, round, steakShown, onSteakVisible, onTap }: Stage
       }}
       onKeyDown={onKeyDown}
       className="neon-box relative aspect-square w-full max-w-[380px] touch-manipulation select-none overflow-hidden rounded-md border border-[#4a34a8] bg-[#150d33] outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]">
-      {layers.map((layer) => (
-        <img
-          key={`${layer}-${round}`}
-          // O bife toca uma vez só: a query nova em cada rodada faz o GIF recomeçar do primeiro quadro.
-          src={layer === "bife" ? `${sceneSrc(layer)}?r=${round}` : sceneSrc(layer)}
-          alt=""
-          draggable={false}
-          // A reação conta de quando o bife está carregado na tela, não de quando o timer disparou.
-          onLoad={layer === "bife" ? onSteakVisible : undefined}
-          className="pointer-events-none absolute inset-0 h-full w-full [image-rendering:pixelated]"
-        />
-      ))}
+      <img
+        key={`${phase}-${round}`}
+        // O bife toca uma vez só: a query nova em cada rodada faz o GIF recomeçar do primeiro quadro.
+        src={phase === "bife" ? `${sceneSrc(phase)}?r=${round}` : sceneSrc(phase)}
+        alt=""
+        draggable={false}
+        // A reação conta de quando o bife está carregado na tela, não de quando o timer disparou.
+        onLoad={phase === "bife" ? onSteakVisible : undefined}
+        className="pointer-events-none absolute inset-0 h-full w-full [image-rendering:pixelated]"
+      />
     </button>
   );
 }
@@ -120,7 +112,7 @@ export function ReflexoGame() {
   const [finished, setFinished] = useState(false);
   const [podium, setPodium] = useState<PodiumState | null>(null);
   const lastPodiumOrder = useRef<string[] | null>(null);
-  const playerId = useRef(createClientId());
+  const playerId = useRef(tabClientId());
   const roster: PlayerListItem[] = Object.entries(players).map(([id, player]) => ({
     id,
     ...player,
@@ -128,8 +120,7 @@ export function ReflexoGame() {
   }));
   const channelRef = useRef<RealtimeChannel | null>(null);
   const activeRoundRef = useRef(0);
-  /** Após voltar ao lobby, a presença ainda pode trazer o `roundStart` antigo até o anfitrião reanunciar: ignora até a próxima rodada. */
-  const ignorePresenceRound = useRef(false);
+  const syncRef = useRef<RoomSync | null>(null);
   /** Instante (`performance.now()`) em que o bife apareceu neste aparelho; `null` enquanto o lobo espera. */
   const steakAt = useRef<number | null>(null);
   const resultRef = useRef<TapResult | null>(null);
@@ -186,7 +177,7 @@ export function ReflexoGame() {
     if ("vibrate" in navigator) navigator.vibrate(tap.kind === "hit" ? 80 : [60, 40, 60]);
     const score = { id: playerId.current, name: profile.name.trim(), avatar: profile.avatar, excessMs: tap.ms };
     addScore(score);
-    void channelRef.current?.send({ type: "broadcast", event: "round-score", payload: score });
+    void syncRef.current?.send("round-score", score);
   };
 
   const tap = () => {
@@ -197,7 +188,6 @@ export function ReflexoGame() {
   const applyRoundStart = (payload: RoundStartPayload) => {
     clearTimers();
     activeRoundRef.current = payload.round;
-    ignorePresenceRound.current = false;
     if (payload.round === 1) lastPodiumOrder.current = null;
     steakAt.current = null;
     resultRef.current = null;
@@ -227,7 +217,6 @@ export function ReflexoGame() {
   const applyLobbyReset = () => {
     clearTimers();
     activeRoundRef.current = 0;
-    ignorePresenceRound.current = true;
     lastPodiumOrder.current = null;
     steakAt.current = null;
     resultRef.current = null;
@@ -258,10 +247,31 @@ export function ReflexoGame() {
   const finishTapRef = useRef(finishTap);
   finishTapRef.current = finishTap;
 
+  const reconnectKey = useRoomWake(channelRef, joined, () => void syncRef.current?.request());
+
   useEffect(() => {
     const client = supabase;
     if (!joined || !client || !room) return;
     const channel = client.channel(`reflexo:${room}`, { config: { presence: { key: playerId.current } } });
+    const sync = createRoomSync({
+      channel,
+      selfId: playerId.current,
+      isHost: () => sharedRef.current.isHost,
+      storageKey: syncStorageKey("reflexo", room),
+      resetEvents: ["round-start", "back-to-lobby"],
+      handlers: {
+        "update-config": (payload: RoomConfig) => applyConfig(payload),
+        "round-start": (payload: RoundStartPayload) => applyRoundStart(payload),
+        "back-to-lobby": applyLobbyReset,
+        "podium-show": (payload: PodiumPayload) => applyPodium(payload),
+        "round-score": (payload: Score) => addScore(payload),
+        "game-finished": () => {
+          clearTimers();
+          setFinished(true);
+        },
+      },
+    });
+    syncRef.current = sync;
     const syncLobby = () => {
       const presence = channel.presenceState<ReflexoPresence>();
       setPlayers(
@@ -272,34 +282,15 @@ export function ReflexoGame() {
           ]),
         ),
       );
-      if (activeRoundRef.current === 0 && !ignorePresenceRound.current) {
-        const activeRound = Object.values(presence)
-          .flat()
-          .find((entry) => entry.roundStart)?.roundStart;
-        if (activeRound) applyRoundStart(activeRound);
-      }
     };
     channel
       .on("presence", { event: "sync" }, syncLobby)
-      .on("presence", { event: "join" }, () => {
-        syncLobby();
-        if (sharedRef.current.isHost && activeRoundRef.current === 0) {
-          void channel.send({ type: "broadcast", event: "update-config", payload: sharedRef.current.config });
-        }
-      })
-      .on("presence", { event: "leave" }, syncLobby)
-      .on("broadcast", { event: "update-config" }, ({ payload }: { payload: RoomConfig }) => applyConfig(payload))
-      .on("broadcast", { event: "round-start" }, ({ payload }: { payload: RoundStartPayload }) =>
-        applyRoundStart(payload),
-      )
-      .on("broadcast", { event: "back-to-lobby" }, applyLobbyReset)
-      .on("broadcast", { event: "podium-show" }, ({ payload }: { payload: PodiumPayload }) => applyPodium(payload))
-      .on("broadcast", { event: "round-score" }, ({ payload }: { payload: Score }) => addScore(payload))
-      .on("broadcast", { event: "game-finished" }, () => {
-        clearTimers();
-        setFinished(true);
-      })
+      .on("presence", { event: "join" }, syncLobby)
+      .on("presence", { event: "leave" }, syncLobby);
+    sync.attach();
+    channel
       .on("broadcast", { event: "room-closed" }, () => {
+        sync.clear();
         clearTimers();
         activeRoundRef.current = 0;
         setJoined(false);
@@ -312,12 +303,15 @@ export function ReflexoGame() {
         await channel.track({ name: profile.name.trim(), avatar: profile.avatar, pin: room });
         setLastRoom(room, "reflexo");
         syncLobby();
+        // Reconectou ou recarregou: o anfitrião retoma a partida salva; os demais pedem a atual a ele.
+        if (sharedRef.current.isHost) sync.restore();
+        else void sync.request();
       });
     channelRef.current = channel;
     return () => {
       void client.removeChannel(channel);
     };
-  }, [joined, profile.avatar, profile.name, room]);
+  }, [joined, profile.avatar, profile.name, room, reconnectKey]);
 
   const validateRoundCount = () => {
     const parsed = roundCountSchema.safeParse(roundCountInput);
@@ -363,7 +357,7 @@ export function ReflexoGame() {
     const next: RoomConfig = { roundCount: count };
     applyConfig(next);
     setSettingsOpen(false);
-    await channelRef.current?.send({ type: "broadcast", event: "update-config", payload: next });
+    await syncRef.current?.send("update-config", next);
   };
 
   const joinRoom = () => {
@@ -385,29 +379,25 @@ export function ReflexoGame() {
       scores: nextRound === 1 ? [] : scores,
     };
     applyRoundStart(payload);
-    await channel.track({ name: profile.name.trim(), avatar: profile.avatar, roundStart: payload });
-    await channel.send({ type: "broadcast", event: "round-start", payload });
+    await syncRef.current?.send("round-start", payload);
   };
 
   const backToLobby = async () => {
     applyLobbyReset();
-    const channel = channelRef.current;
-    // Sem `roundStart` na presença: quem entrar agora cai no lobby, não na rodada antiga.
-    await channel?.track({ name: profile.name.trim(), avatar: profile.avatar, pin: room });
-    await channel?.send({ type: "broadcast", event: "back-to-lobby", payload: {} });
+    await syncRef.current?.send("back-to-lobby");
   };
 
   const showPartialPodium = async () => {
     const payload: PodiumPayload = { round, scores };
     applyPodium(payload);
-    await channelRef.current?.send({ type: "broadcast", event: "podium-show", payload });
+    await syncRef.current?.send("podium-show", payload);
   };
 
   const finishGame = async () => {
     setFinished(true);
     setLastRoom(null, null);
     playSuccessHorn(soundEnabled);
-    await channelRef.current?.send({ type: "broadcast", event: "game-finished", payload: {} });
+    await syncRef.current?.send("game-finished");
   };
 
   const resetRoomState = () => {
@@ -431,6 +421,7 @@ export function ReflexoGame() {
     const channel = channelRef.current;
     if (channel) await channel.send({ type: "broadcast", event: "room-closed", payload: {} });
     if (channel && supabase) await supabase.removeChannel(channel);
+    syncRef.current?.clear();
     setHostRoom("reflexo", room, false);
     resetRoomState();
   };
@@ -722,7 +713,6 @@ export function ReflexoGame() {
           <ReflexoStage
             phase={phase}
             round={round}
-            steakShown={steakShown}
             onSteakVisible={steakVisible}
             onTap={tap}
           />

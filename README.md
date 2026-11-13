@@ -6,13 +6,13 @@ Hub de jogos rápidos, mobile-first e instalável como PWA, no estilo "Neon Arca
 
 - **Sorteio de letras:** histórico em grade, cores alternadas, animação, curto-circuito na borda, som de roleta e contagem regressiva opcional com campainha ao terminar.
 - **Sorteio de peso:** faixa configurável, seletor entre gramas e quilos e resultados sem repetição na sessão ativa.
-- **Sorteio de números:** quantidade de dígitos configurável e resultados sem repetição na sessão ativa.
+- **Cofre:** jogo em sala. Um código secreto tranca o cofre; todos digitam combinações ao mesmo tempo no teclado; os dígitos certos acendem em verde e os errados piscam em vermelho, com som de falha. Um contador mostra quanto tempo levou para abrir. Quem descobre o código primeiro abre o cofre; o pódio ordena por dígitos acertados e mostra o tempo de quem abriu. Dígitos configuráveis, acertos compartilhados ou individuais e vidas por participante opcionais (cada combinação errada custa uma vida; sem vidas, o jogador fica travado). Na rua da Home, o Cofre é o banco.
 - **Mega senha:** gire o seletor de canais da TV para sortear palavras únicas do catálogo (tabela `words` do Supabase, com cópia local para uso offline) e preserva o histórico entre sessões até ser reiniciado.
-- **Impostor:** sala multiplayer com uma palavra secreta, um impostor por rodada, votação, nova rodada pelo anfitrião e encerramento da sala.
+- **Impostor:** sala multiplayer com uma palavra secreta, um impostor por rodada, sorteio de quem começa (se for o impostor, ele recebe uma palavra de apoio parecida com a secreta para disfarçar), votação, nova rodada pelo anfitrião e encerramento da sala.
 - **Tempo certo:** sala multiplayer em que cada participante inicia e pausa seu cronômetro (toque no painel digital de LED, no formato mm:ss:cc) para atingir o tempo alvo. O desvio acumulado decide o pódio final; o anfitrião define rodadas, tempo máximo, precisão e se o cronômetro mostra o tempo enquanto roda ("Ver tempo").
 - **Campo minado:** sala multiplayer em grade (padrão 6×10) em que os jogadores têm vidas e revelam casas por turnos, em rodadas com ordem sorteada a cada rodada; cada bomba atingida custa uma vida. Vence o último com vida; se as casas seguras acabarem com mais de um vivo, vence quem tiver mais vidas (iguais = empate). O anfitrião configura grade, vidas e bombas. _Em evolução:_ hoje o mapa de bombas é montado pelo anfitrião (com sorteio para os demais) e transmitido a todos.
 - **Reflexo:** sala multiplayer em que o lobo encara o pote vazio; depois de uma espera aleatória (2 a 6 s) o bife aparece e cada jogador toca na tela o mais rápido possível. Tocar antes é largada falsa (2 s de punição) e demorar mais de 1,5 s conta como lento. Vence o menor tempo de reação acumulado, com pódio parcial entre rodadas.
-- **Palavras proibidas:** jogo local em que só quem conduz vê a palavra e as proibidas (tabela `taboo_cards` do Supabase, com cópia local para uso offline). Ele descreve em voz alta e toca em quem acertou; cada participante joga por si. Modo com tempo por palavra (a palavra passa sozinha quando o relógio zera) ou livre, até acabarem as palavras; no fim, pódio por acertos.
+- **Palavras proibidas:** jogo em sala. A cada rodada a ordem é sorteada e cada jogador recebe uma carta (palavra e proibidas; tabela `taboo_cards` do Supabase, com cópia local), descreve em voz alta e marca quem acertou. Pódio parcial ao fim de cada rodada.
 - **Quem seria mais provável?:** sala multiplayer em que aparece uma pergunta (tabela `words`, jogo `provavel`, com cópia local) e cada um vota em quem da sala combina mais com ela, inclusive em si mesmo. A tela mostra quem já votou, mas não em quem; quando todos votam (ou o anfitrião decide), os votos são revelados. No fim, o placar mostra o mais votado da noite.
 - **Ordem silenciosa:** sala cooperativa (inspirada em The Mind): no nível N cada jogador recebe N cartas de 1 a 100 e o grupo precisa jogá-las em ordem crescente sem conversar; cada um só joga a sua carta mais baixa. Jogar enquanto outro tinha uma menor custa uma das 3 vidas e descarta as cartas menores. O último nível depende do número de jogadores (12 com 2, 10 com 3, 8 com 4 ou mais); o anfitrião distribui as cartas e valida as jogadas. Os jogadores ficam em volta de uma mesa de cartas: tocar na própria carta mais baixa a joga, e ela desliza até o centro; num erro, as cartas da rodada embaralham e reaparecem na ordem certa, com as fora de ordem em neon vermelho.
 
@@ -24,7 +24,7 @@ Abaixo do título da tela inicial fica uma rua neon dos anos 80 em pixel art 2.5
 
 A tela inicial exibe a configuração de perfil até o nome ser definido. Depois disso, nome e avatar ficam disponíveis na navbar e podem ser editados por um diálogo, que também define a transição de página. Além dos avatares sugeridos, o seletor permite escolher emojis personalizados e mantém os últimos 24 emojis únicos usados no armazenamento local.
 
-Os jogos multiplayer (Impostor, Tempo certo, Campo minado, Reflexo, Quem seria mais provável? e Ordem silenciosa) usam esse perfil automaticamente ao entrar em uma sala.
+Os jogos multiplayer (Impostor, Cofre, Tempo certo, Campo minado, Reflexo, Palavras proibidas, Quem seria mais provável? e Ordem silenciosa) usam esse perfil automaticamente ao entrar em uma sala.
 
 As salas abertas aparecem na tela de entrada de cada jogo multiplayer enquanto o anfitrião permanece no lobby. A descoberta acontece por Presence no Supabase Realtime (canal `rooms:<jogo>`), sem banco de dados adicional. Uma sala é identificada por um PIN, também aceito na URL (`?pin=`), e o app lembra a última sala para reconectar.
 
@@ -61,7 +61,7 @@ Perfil, avatares personalizados, transição de página, configurações, prefer
   - `Share Tech Mono` (corpo)
   - `Silkscreen` (títulos e números, estética pixel de jogos: `.font-game-pixel`)
 - **Estado**: Zustand para configurações e preferências
-- **Realtime**: Supabase Realtime (Presence e Broadcast) para Impostor, Tempo certo, Campo minado, Reflexo, Quem seria mais provável? e Ordem silenciosa
+- **Realtime**: Supabase Realtime (Presence e Broadcast) para Impostor, Cofre, Tempo certo, Campo minado, Reflexo, Palavras proibidas, Quem seria mais provável? e Ordem silenciosa
 - **Animações**: `motion`
 - **Validação**: Zod para configuração de salas
 - **Utilitários**: `emoji-picker-react` (avatar personalizado) e `canvas-confetti` (celebrações)
@@ -121,18 +121,24 @@ Sem essas variáveis, os jogos multiplayer exibem a tela "Salas online fora do a
 
 | Jogo | Canal | Eventos de Broadcast |
 |---|---|---|
-| Impostor | `impostor:<pin>` | `round-start`, `vote`, `end-round`, `room-closed` |
+| Impostor | `impostor:<pin>` | `round-start` (`impostorId`, `word`, `firstId`, `hint`), `vote`, `end-round`, `room-closed` |
 | Tempo certo | `time-game:<pin>` | `round-start`, `timer-start`, `round-score`, `game-finished`, `room-closed` |
-| Campo minado | `campo-minado:<pin>` | `update_config`, `start_game`, `cell_click`, `forfeit`, `reset_game`, `room-closed` |
+| Campo minado | `campo-minado:<pin>` | `update_config`, `start_game`, `cell_click`, `turn_timeout`, `forfeit`, `reset_game`, `room-closed` |
 | Reflexo | `reflexo:<pin>` | `update-config`, `round-start`, `round-score`, `podium-show`, `back-to-lobby`, `game-finished`, `room-closed` |
 | Quem seria mais provável? | `provavel:<pin>` | `update-config`, `round-start`, `vote`, `reveal`, `back-to-lobby`, `game-finished`, `room-closed` |
+| Palavras proibidas | `proibidas:<pin>` | `update-config`, `round-start`, `turn-result`, `back-to-lobby`, `game-finished`, `room-closed` |
+| Cofre | `number:<pin>` | `update-config`, `start` (`code`, `startedAt`, `playerIds`, vidas), `guess` (`ms`), `back-to-lobby`, `room-closed` |
 | Ordem silenciosa | `ordem:<pin>` | `state` (estado completo, do anfitrião), `sync-request`, `play-request`, `room-closed` |
 
-Presence mantém a lista de jogadores em cada canal. Como os eventos partem dos clientes, não há garantia de sigilo ou anti-trapaça (por exemplo, a palavra do Impostor é transmitida a todos os participantes).
+Todos os jogos, exceto a Ordem silenciosa, também trocam `sync-request` e `replay`: quem volta do segundo plano pede ao anfitrião o log de eventos da rodada e se atualiza (ver `src/lib/room-sync.ts`). Presence mantém a lista de jogadores em cada canal. Como os eventos partem dos clientes, não há garantia de sigilo ou anti-trapaça (por exemplo, a palavra do Impostor é transmitida a todos os participantes).
 
 **Tempo certo:** quem cria a sala define entre 1 e 20 rodadas (5 por padrão), o tempo máximo sorteável (5 a 120 segundos), a precisão do alvo (segundos ou centésimos, exibidos com duas casas) e se o cronômetro mostra o tempo enquanto roda ("Ver tempo"). Os tempos-alvo não se repetem durante a mesma partida. A rodada só avança após todos os participantes finalizarem suas tentativas. O criador pode encerrar a sala, desconectando os participantes.
 
-**Impostor:** o criador pode sortear uma nova rodada com nova palavra e novo impostor, ou encerrar a sala para todos os participantes.
+**Impostor:** o criador pode sortear uma nova rodada com nova palavra, novo impostor e novo primeiro a falar, ou encerrar a sala para todos os participantes. A palavra de apoio é uma vizinha da secreta na lista da categoria (`pickHint`, `src/lib/impostor-rules.ts`).
+
+**Campo minado:** a vez do jogador é destacada (banner, borda rosa pulsando, vibração e som) e a grade dos demais fica esmaecida. A sala pode ligar um tempo por jogada (5 a 60 s, desligado por padrão): ao esgotar, o jogador perde uma vida e a vez passa.
+
+**Reflexo:** cada fase (espera, bife, comendo, triste) mostra uma única cena do lobo por vez.
 
 ## Scripts
 

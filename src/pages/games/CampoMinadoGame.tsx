@@ -8,8 +8,10 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/lib/realtime";
 import { useGameStore } from "@/lib/store";
-import { playDigSound, playExplosionSound, playTickSound } from "@/lib/audio";
-import { createClientId, createRoomPin } from "@/lib/utils";
+import { playDigSound, playExplosionSound, playTickSound, playTimerEndSound } from "@/lib/audio";
+import { tabClientId, createRoomPin } from "@/lib/utils";
+import { createRoomSync, syncStorageKey, type RoomSync } from "@/lib/room-sync";
+import { useRoomWake } from "@/hooks/useRoomWake";
 import { BottomSheet } from "@/components/BottomSheet";
 import { IconCounter } from "@/components/IconCounter";
 import { NeonSlider } from "@/components/NeonSlider";
@@ -22,7 +24,8 @@ import { GameButton } from "@/components/games/GameButton";
 import { OrientationGuide } from "@/components/games/OrientationGuide";
 import { PlayerLivesBar } from "@/components/games/PlayerLivesBar";
 import { CampoMinadoGrid } from "@/components/games/CampoMinadoGrid";
-import { applyClick, createMatch, currentPlayerId, forfeit, type Match } from "@/lib/campo-minado-rules";
+import { applyClick, applyTimeout, createMatch, currentPlayerId, forfeit, turnRef, type Match } from "@/lib/campo-minado-rules";
+import { LedSign } from "@/components/games/LedSign";
 import { motion } from "motion/react";
 import type { PlayerListItem } from "@/components/games/PlayerList";
 
@@ -34,6 +37,12 @@ interface PlayerState {
   /** Bombas posicionadas no lobby; valem quando `ready`. */
   bombs: number[];
 }
+
+/** Turno em que a jogada foi feita; eventos antigos, sem turno, valem em qualquer um. */
+const turnOf = (payload: { round?: number; turn?: number }) =>
+  payload.round === undefined || payload.turn === undefined ? undefined : { round: payload.round, turn: payload.turn };
+
+const TURN_GRACE_MS = 2500;
 
 export function CampoMinadoGame() {
   const configured = Boolean(supabase);
@@ -53,8 +62,11 @@ export function CampoMinadoGame() {
   const [maxLives, setMaxLives] = useState(3);
   const [bombsPerPlayer, setBombsPerPlayer] = useState(3);
   const [showMyBombs, setShowMyBombs] = useState(true);
+  // Tempo para escolher uma casa; desligado por padrão. Esgotado, o jogador perde uma vida e a vez passa.
+  const [turnTimerEnabled, setTurnTimerEnabled] = useState(false);
+  const [turnSeconds, setTurnSeconds] = useState(15);
 
-  const playerId = useRef(createClientId());
+  const playerId = useRef(tabClientId());
 
   // Gameplay State
   const [myBombs, setMyBombs] = useState<number[]>([]);
@@ -68,8 +80,8 @@ export function CampoMinadoGame() {
   const matchRef = useRef<Match | null>(null);
   matchRef.current = match;
   // Lido pelos handlers do canal, que não são recriados a cada mudança de configuração.
-  const sharedRef = useRef({ isHost, config: { gridSize, maxLives, bombsPerPlayer, showMyBombs } });
-  sharedRef.current = { isHost, config: { gridSize, maxLives, bombsPerPlayer, showMyBombs } };
+  const sharedRef = useRef({ isHost, config: { gridSize, maxLives, bombsPerPlayer, showMyBombs, turnTimerEnabled, turnSeconds } });
+  sharedRef.current = { isHost, config: { gridSize, maxLives, bombsPerPlayer, showMyBombs, turnTimerEnabled, turnSeconds } };
 
   const roster: PlayerListItem[] = players.map((p) => ({
     id: p.id,
@@ -80,6 +92,7 @@ export function CampoMinadoGame() {
     active: p.id === activeId,
   }));
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
+  const syncRef = useRef<RoomSync | null>(null);
   const { profile, soundEnabled, setLastRoom } = useGameStore();
 
   const applyConfig = (config: typeof sharedRef.current.config) => {
@@ -87,6 +100,8 @@ export function CampoMinadoGame() {
     setMaxLives(config.maxLives);
     setBombsPerPlayer(config.bombsPerPlayer);
     setShowMyBombs(config.showMyBombs);
+    setTurnTimerEnabled(config.turnTimerEnabled ?? false);
+    setTurnSeconds(config.turnSeconds ?? 15);
   };
 
   const clearMatch = () => {
@@ -101,60 +116,69 @@ export function CampoMinadoGame() {
     setIsHost(isHostRoom("campo-minado", restoredPin));
   });
 
+  const reconnectKey = useRoomWake(channelRef, joined, () => void syncRef.current?.request());
+
   useEffect(() => {
     const client = supabase;
     if (!joined || !client || !room) return;
 
     const channel = client.channel(`campo-minado:${room}`, { config: { presence: { key: playerId.current } } });
+    const sync = createRoomSync({
+      channel,
+      selfId: playerId.current,
+      isHost: () => sharedRef.current.isHost,
+      storageKey: syncStorageKey("campo-minado", room),
+      resetEvents: ["start_game", "reset_game"],
+      handlers: {
+        update_config: (payload) => applyConfig(payload),
+        start_game: (payload) => {
+          applyConfig(payload.config);
+          setSettledRound(0);
+          setMatch(createMatch(payload.seed, payload.totalCells, payload.maxLives, payload.bombMap, payload.playerIds));
+        },
+        cell_click: (payload, { replay }) => {
+          const { cellIndex, playerId: clickedPlayerId } = payload;
+          const current = matchRef.current;
+          if (!replay) {
+            const next = current && applyClick(current, cellIndex, clickedPlayerId, turnOf(payload));
+            if (!current || next === current) return;
+            const sound = useGameStore.getState().soundEnabled;
+            if (current.bombMap[cellIndex]) playExplosionSound(sound);
+            else playDigSound(sound);
+          }
+          setMatch((prev) => prev && applyClick(prev, cellIndex, clickedPlayerId, turnOf(payload)));
+        },
+        turn_timeout: (payload, { replay }) => {
+          setMatch((prev) => prev && applyTimeout(prev, payload.playerId, payload));
+          if (!replay) playTimerEndSound(useGameStore.getState().soundEnabled);
+        },
+        forfeit: (payload) => setMatch((prev) => prev && forfeit(prev, payload.playerId)),
+        reset_game: () => {
+          clearMatch();
+          channelRef.current
+            ?.track({ name: profile.name.trim(), avatar: profile.avatar, ready: false })
+            .catch(() => {});
+        },
+      },
+    });
+    syncRef.current = sync;
 
+    channel.on("presence", { event: "sync" }, () => {
+      const state = channel.presenceState<PlayerState>();
+      setPlayers(
+        Object.entries(state).map(([id, entries]) => ({
+          id,
+          name: entries[0]?.name ?? "Desconhecido",
+          avatar: entries[0]?.avatar ?? "🐺",
+          ready: entries[0]?.ready ?? false,
+          bombs: entries[0]?.bombs ?? [],
+        })),
+      );
+    });
+    sync.attach();
     channel
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState<PlayerState>();
-        setPlayers(
-          Object.entries(state).map(([id, entries]) => ({
-            id,
-            name: entries[0]?.name ?? "Desconhecido",
-            avatar: entries[0]?.avatar ?? "🐺",
-            ready: entries[0]?.ready ?? false,
-            bombs: entries[0]?.bombs ?? [],
-          })),
-        );
-      })
-      .on("presence", { event: "join" }, () => {
-        // Quem entra depois não recebeu o último update_config: o anfitrião reenvia.
-        if (sharedRef.current.isHost) {
-          void channel.send({ type: "broadcast", event: "update_config", payload: sharedRef.current.config });
-        }
-      })
-      .on("broadcast", { event: "start_game" }, ({ payload }) => {
-        applyConfig(payload.config);
-        setSettledRound(0);
-        setMatch(createMatch(payload.seed, payload.totalCells, payload.maxLives, payload.bombMap, payload.playerIds));
-      })
-      .on("broadcast", { event: "cell_click" }, ({ payload }) => {
-        const { cellIndex, playerId: clickedPlayerId } = payload;
-        const current = matchRef.current;
-        const next = current && applyClick(current, cellIndex, clickedPlayerId);
-        if (!current || next === current) return;
-
-        setMatch((prev) => prev && applyClick(prev, cellIndex, clickedPlayerId));
-        const sound = useGameStore.getState().soundEnabled;
-        if (current.bombMap[cellIndex]) playExplosionSound(sound);
-        else playDigSound(sound);
-      })
-      .on("broadcast", { event: "forfeit" }, ({ payload }) => {
-        setMatch((prev) => prev && forfeit(prev, payload.playerId));
-      })
-      .on("broadcast", { event: "update_config" }, ({ payload }) => applyConfig(payload))
-      .on("broadcast", { event: "reset_game" }, () => {
-        clearMatch();
-        channelRef.current?.track({
-            name: profile.name.trim(),
-            avatar: profile.avatar,
-            ready: false,
-        }).catch(() => {});
-      })
       .on("broadcast", { event: "room-closed" }, () => {
+        sync.clear();
         setJoined(false);
         clearMatch();
         setRoomClosed(true);
@@ -169,6 +193,9 @@ export function CampoMinadoGame() {
             ready: false,
           });
           setLastRoom(room, "campo-minado");
+          // Reconectou ou recarregou: o anfitrião retoma a partida salva; os demais pedem a atual a ele.
+          if (sharedRef.current.isHost) sync.restore();
+          else void sync.request();
         }
       });
 
@@ -176,7 +203,7 @@ export function CampoMinadoGame() {
     return () => {
       void client.removeChannel(channel);
     };
-  }, [joined, profile.avatar, profile.name, room]);
+  }, [joined, profile.avatar, profile.name, room, reconnectKey]);
 
   // Quem sai da sala na vez dele travaria a partida: o anfitrião o elimina após uma folga.
   const turnPlayerId = match ? currentPlayerId(match) : null;
@@ -185,10 +212,54 @@ export function CampoMinadoGame() {
     if (!isHost || !turnPlayerId || turnPlayerPresent) return;
     const timer = setTimeout(() => {
       setMatch((prev) => prev && forfeit(prev, turnPlayerId));
-      void channelRef.current?.send({ type: "broadcast", event: "forfeit", payload: { playerId: turnPlayerId } });
-    }, 3000);
+      void syncRef.current?.send("forfeit", { playerId: turnPlayerId });
+    }, 15000);
     return () => clearTimeout(timer);
   }, [isHost, turnPlayerId, turnPlayerPresent]);
+
+  // Relógio do turno. Quem joga dispara o próprio timeout; o anfitrião cobre quem sumiu, com uma folga maior.
+  // O evento leva o turno, então disparos repetidos (ou atrasados) são ignorados em todos os aparelhos.
+  const turnKey = match && activeId ? `${match.round}:${match.turn}` : null;
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const firedTurn = useRef<string | null>(null);
+  useEffect(() => {
+    if (!turnTimerEnabled || !turnKey) {
+      setSecondsLeft(null);
+      return;
+    }
+    const startedAt = performance.now();
+    const limit = turnSeconds * 1000;
+    const tick = () => {
+      const elapsed = performance.now() - startedAt;
+      setSecondsLeft(Math.max(0, Math.ceil((limit - elapsed) / 1000)));
+      const current = matchRef.current;
+      const who = current && currentPlayerId(current);
+      if (!current || !who || firedTurn.current === turnKey) return;
+      const mine = who === playerId.current;
+      if (elapsed < limit + (mine ? 0 : TURN_GRACE_MS) || !(mine || sharedRef.current.isHost)) return;
+      firedTurn.current = turnKey;
+      const at = turnRef(current);
+      const next = applyTimeout(current, who, at);
+      if (next === current) return;
+      setMatch(next);
+      playTimerEndSound(useGameStore.getState().soundEnabled);
+      void syncRef.current?.send("turn_timeout", { playerId: who, ...at });
+    };
+    tick();
+    const interval = setInterval(tick, 250);
+    return () => clearInterval(interval);
+  }, [turnKey, turnTimerEnabled, turnSeconds]);
+  const turnExpired = turnTimerEnabled && secondsLeft === 0;
+
+  // Aviso tátil e sonoro quando a vez chega.
+  const wasMyTurn = useRef(false);
+  useEffect(() => {
+    if (isMyTurn && !wasMyTurn.current) {
+      playTickSound(soundEnabled);
+      if ("vibrate" in navigator) navigator.vibrate([120, 60, 120]);
+    }
+    wasMyTurn.current = isMyTurn;
+  }, [isMyTurn, soundEnabled]);
 
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const joinListedRoom = (listedRoom: string) => {
@@ -230,13 +301,7 @@ export function CampoMinadoGame() {
   };
 
   const updateSettings = async () => {
-    const channel = channelRef.current;
-    if (!channel) return;
-    await channel.send({
-      type: "broadcast",
-      event: "update_config",
-      payload: sharedRef.current.config
-    });
+    await syncRef.current?.send("update_config", sharedRef.current.config);
   };
 
   const handleBombPlacement = (index: number) => {
@@ -271,24 +336,21 @@ export function CampoMinadoGame() {
     };
     setSettledRound(0);
     setMatch(createMatch(payload.seed, totalCells, maxLives, bombMap, payload.playerIds));
-    await channel.send({ type: "broadcast", event: "start_game", payload });
+    await syncRef.current?.send("start_game", payload);
   };
 
   const onCellClick = async (index: number) => {
     const channel = channelRef.current;
     if (!match || !channel || !isMyTurn) return;
 
-    const next = applyClick(match, index, playerId.current);
+    const at = turnRef(match);
+    const next = applyClick(match, index, playerId.current, at);
     if (next === match) return;
 
     setMatch(next);
     if (match.bombMap[index]) playExplosionSound(soundEnabled);
     else playDigSound(soundEnabled);
-    await channel.send({
-      type: "broadcast",
-      event: "cell_click",
-      payload: { cellIndex: index, playerId: playerId.current }
-    });
+    await syncRef.current?.send("cell_click", { cellIndex: index, playerId: playerId.current, ...at });
   };
 
   const resetGame = async () => {
@@ -296,11 +358,7 @@ export function CampoMinadoGame() {
     if (!channel) return;
 
     clearMatch();
-    await channel.send({
-      type: "broadcast",
-      event: "reset_game",
-      payload: {}
-    });
+    await syncRef.current?.send("reset_game");
 
     await channel.track({
         name: profile.name.trim(),
@@ -312,6 +370,7 @@ export function CampoMinadoGame() {
   const leaveRoom = async () => {
     const channel = channelRef.current;
     if (channel && supabase) await supabase.removeChannel(channel);
+    syncRef.current?.clear();
     setHostRoom("campo-minado", room, false);
 
     setJoined(false);
@@ -377,7 +436,7 @@ export function CampoMinadoGame() {
               />
             )
           }
-          onSettings={joined && isHost ? () => setIsSettingsDialogOpen(true) : undefined}
+          onSettings={joined && isHost && !match ? () => setIsSettingsDialogOpen(true) : undefined}
           room={joined ? { pin: room, players: roster } : undefined}
           leave={joined ? { host: isHost, onConfirm: isHost ? closeRoom : leaveRoom } : undefined}
         />
@@ -462,9 +521,20 @@ export function CampoMinadoGame() {
         ) : gamePhase === "PLAYING" && match ? (
           <div className="flex flex-col items-center gap-4 py-8">
             <h2 className="neon-text font-game-pixel text-2xl tracking-[.08em]">RODADA {match.round}</h2>
-            <p className={`font-game-pixel text-sm tracking-[.08em] ${isMyTurn ? "neon-text" : "text-[#c2b9d1]"}`} aria-live="polite">
-              {turnLabel}
-            </p>
+            {isMyTurn ? (
+              <div className="neon-box blink w-full max-w-[420px] rounded-md px-4 py-3 text-center" role="status" aria-live="polite">
+                <span className="neon-text font-game-pixel text-2xl tracking-[.1em]">{turnLabel}</span>
+              </div>
+            ) : (
+              <p className="font-game-pixel text-sm tracking-[.08em] text-[#c2b9d1]" aria-live="polite">
+                {turnLabel}
+              </p>
+            )}
+            {turnTimerEnabled && secondsLeft !== null && (
+              <LedSign color={secondsLeft <= 5 ? "#ff4552" : "#00e5ff"} className="min-w-[96px] text-center">
+                {secondsLeft}s
+              </LedSign>
+            )}
             <OrientationGuide
               isVisible={!orientationDismissed && gridSize.cols > 8 && window.innerWidth < 768}
               onDismiss={() => setOrientationDismissed(true)}
@@ -476,17 +546,18 @@ export function CampoMinadoGame() {
               shuffling={shuffling}
               onShuffleDone={() => setSettledRound(match.round)}
             />
-            <div className="w-full overflow-x-auto p-1">
+            <div className={`w-full overflow-x-auto p-1 transition-[opacity,filter] duration-300 ${isMyTurn || shuffling ? "" : "opacity-50 saturate-50"}`}>
               <CampoMinadoGrid
                 key={`${gridSize.rows}x${gridSize.cols}`}
                 rows={gridSize.rows}
                 cols={gridSize.cols}
+                turn={shuffling ? undefined : isMyTurn ? "mine" : "other"}
                 phase="PLAYING"
                 cellStatuses={match.statuses}
                 onCellClick={onCellClick}
                 showMyBombs={showMyBombs}
                 myBombs={myBombs}
-                disabled={!isMyTurn}
+                disabled={!isMyTurn || turnExpired}
               />
             </div>
           </div>
@@ -539,6 +610,13 @@ export function CampoMinadoGame() {
             <span id="show-my-bombs" className="text-base text-[#c2b9d1]">Exibir minhas bombas no campo</span>
             <Switch checked={showMyBombs} onChange={setShowMyBombs} />
           </div>
+          <div className="flex items-center justify-between gap-4 border-t border-white/9 pt-4">
+            <span className="text-base text-[#c2b9d1]">Tempo para escolher a casa</span>
+            <Switch checked={turnTimerEnabled} onChange={setTurnTimerEnabled} />
+          </div>
+          {turnTimerEnabled && (
+            <NeonSlider label="Segundos por vez" value={turnSeconds} min={5} max={60} step={5} unit="s" onChange={setTurnSeconds} />
+          )}
         </div>
       </BottomSheet>
     </Shell>

@@ -10,7 +10,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { playStopwatchStartSound, playStopwatchStopSound, playSuccessHorn } from "@/lib/audio";
 import { supabase } from "@/lib/realtime";
-import { createClientId, drawUniqueInteger, formatStopwatch, createRoomPin } from "@/lib/utils";
+import { drawUniqueInteger, formatStopwatch, createRoomPin, tabClientId } from "@/lib/utils";
+import { createRoomSync, syncStorageKey, type RoomSync } from "@/lib/room-sync";
+import { useRoomWake } from "@/hooks/useRoomWake";
 import { RoomDirectory } from "@/components/games/RoomDirectory";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useGameStore } from "@/lib/store";
@@ -39,7 +41,7 @@ type RoundStartPayload = {
 };
 type PodiumPayload = { round: number; scores: Score[] };
 type PodiumState = PodiumPayload & { previous: string[] | null };
-type TimeGamePresence = { name: string; avatar: string; roundStart?: RoundStartPayload };
+type TimeGamePresence = { name: string; avatar: string };
 type RoomConfig = {
   roundCount: number;
   maxTargetSeconds: number;
@@ -111,7 +113,7 @@ export function TimeGame() {
   const [finished, setFinished] = useState(false);
   const [podium, setPodium] = useState<PodiumState | null>(null);
   const lastPodiumOrder = useRef<string[] | null>(null);
-  const playerId = useRef(createClientId());
+  const playerId = useRef(tabClientId());
   const roster: PlayerListItem[] = Object.entries(players).map(([id, player]) => ({
     id,
     ...player,
@@ -120,8 +122,7 @@ export function TimeGame() {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const startedAt = useRef(0);
   const activeRoundRef = useRef(0);
-  /** Após voltar ao lobby, a presença ainda pode trazer o `roundStart` antigo até o anfitrião reanunciar: ignora até a próxima rodada. */
-  const ignorePresenceRound = useRef(false);
+  const syncRef = useRef<RoomSync | null>(null);
   const usedTargetValues = useRef<number[]>([]);
   const settingsSnapshot = useRef<RoomConfig | null>(null);
   const { profile, soundEnabled, setLastRoom } = useGameStore();
@@ -169,7 +170,6 @@ export function TimeGame() {
 
   const applyRoundStart = (payload: RoundStartPayload) => {
     activeRoundRef.current = payload.round;
-    ignorePresenceRound.current = false;
     if (payload.round === 1) lastPodiumOrder.current = null;
     setPodium(null);
     setRound(payload.round);
@@ -191,7 +191,6 @@ export function TimeGame() {
 
   const applyLobbyReset = () => {
     activeRoundRef.current = 0;
-    ignorePresenceRound.current = true;
     usedTargetValues.current = [];
     lastPodiumOrder.current = null;
     setPodium(null);
@@ -239,10 +238,40 @@ export function TimeGame() {
     if (finished) celebrate();
   }, [finished]);
 
+  const reconnectKey = useRoomWake(channelRef, joined, () => void syncRef.current?.request());
+
   useEffect(() => {
     const client = supabase;
     if (!joined || !client || !room) return;
     const channel = client.channel(`time-game:${room}`, { config: { presence: { key: playerId.current } } });
+    const sync = createRoomSync({
+      channel,
+      selfId: playerId.current,
+      isHost: () => sharedRef.current.isHost,
+      storageKey: syncStorageKey("time", room),
+      resetEvents: ["round-start", "back-to-lobby"],
+      handlers: {
+        "update-config": (payload: RoomConfig) => applyConfig(payload),
+        "round-start": (payload: RoundStartPayload) => applyRoundStart(payload),
+        "back-to-lobby": applyLobbyReset,
+        "podium-show": (payload: PodiumPayload) => applyPodium(payload),
+        "round-score": (payload: Score) => {
+          setSubmitted((current) => (current.includes(payload.id) ? current : [...current, payload.id]));
+          setScores((current) => {
+            const previous = current.find((score) => score.id === payload.id);
+            return [
+              ...current.filter((score) => score.id !== payload.id),
+              { ...payload, excessMs: (previous?.excessMs ?? 0) + payload.excessMs },
+            ];
+          });
+        },
+        "game-finished": () => {
+          setRunning(false);
+          setFinished(true);
+        },
+      },
+    });
+    syncRef.current = sync;
     const syncLobby = () => {
       const presence = channel.presenceState<TimeGamePresence>();
       setPlayers(
@@ -253,43 +282,15 @@ export function TimeGame() {
           ]),
         ),
       );
-      if (activeRoundRef.current === 0 && !ignorePresenceRound.current) {
-        const activeRound = Object.values(presence)
-          .flat()
-          .find((entry) => entry.roundStart)?.roundStart;
-        if (activeRound) applyRoundStart(activeRound);
-      }
     };
     channel
       .on("presence", { event: "sync" }, syncLobby)
-      .on("presence", { event: "join" }, () => {
-        syncLobby();
-        if (sharedRef.current.isHost && activeRoundRef.current === 0) {
-          void channel.send({ type: "broadcast", event: "update-config", payload: sharedRef.current.config });
-        }
-      })
-      .on("presence", { event: "leave" }, syncLobby)
-      .on("broadcast", { event: "update-config" }, ({ payload }: { payload: RoomConfig }) => applyConfig(payload))
-      .on("broadcast", { event: "round-start" }, ({ payload }: { payload: RoundStartPayload }) =>
-        applyRoundStart(payload),
-      )
-      .on("broadcast", { event: "back-to-lobby" }, applyLobbyReset)
-      .on("broadcast", { event: "podium-show" }, ({ payload }: { payload: PodiumPayload }) => applyPodium(payload))
-      .on("broadcast", { event: "round-score" }, ({ payload }: { payload: Score }) => {
-        setSubmitted((current) => (current.includes(payload.id) ? current : [...current, payload.id]));
-        setScores((current) => {
-          const previous = current.find((score) => score.id === payload.id);
-          return [
-            ...current.filter((score) => score.id !== payload.id),
-            { ...payload, excessMs: (previous?.excessMs ?? 0) + payload.excessMs },
-          ];
-        });
-      })
-      .on("broadcast", { event: "game-finished" }, () => {
-        setRunning(false);
-        setFinished(true);
-      })
+      .on("presence", { event: "join" }, syncLobby)
+      .on("presence", { event: "leave" }, syncLobby);
+    sync.attach();
+    channel
       .on("broadcast", { event: "room-closed" }, () => {
+        sync.clear();
         setRunning(false);
         activeRoundRef.current = 0;
         setJoined(false);
@@ -302,12 +303,15 @@ export function TimeGame() {
         await channel.track({ name: profile.name.trim(), avatar: profile.avatar, pin: room });
         setLastRoom(room, "time");
         syncLobby();
+        // Reconectou ou recarregou: o anfitrião retoma a partida salva; os demais pedem a atual a ele.
+        if (sharedRef.current.isHost) sync.restore();
+        else void sync.request();
       });
     channelRef.current = channel;
     return () => {
       void client.removeChannel(channel);
     };
-  }, [joined, profile.avatar, profile.name, room]);
+  }, [joined, profile.avatar, profile.name, room, reconnectKey]);
 
   const joinListedRoom = (listedRoom: string) => {
     if (!profile.name.trim()) return;
@@ -349,7 +353,7 @@ export function TimeGame() {
     const next: RoomConfig = { ...config, targetPrecision, hideTargetOnStart };
     applyConfig(next);
     setSettingsOpen(false);
-    await channelRef.current?.send({ type: "broadcast", event: "update-config", payload: next });
+    await syncRef.current?.send("update-config", next);
   };
 
   const joinRoom = () => {
@@ -385,8 +389,7 @@ export function TimeGame() {
       scores: nextRound === 1 ? [] : scores,
     };
     applyRoundStart(payload);
-    await channel.track({ name: profile.name.trim(), avatar: profile.avatar, roundStart: payload });
-    await channel.send({ type: "broadcast", event: "round-start", payload });
+    await syncRef.current?.send("round-start", payload);
   };
 
   const toggleTimer = async () => {
@@ -420,27 +423,24 @@ export function TimeGame() {
       celebrate();
       playSuccessHorn(soundEnabled);
     }
-    await channelRef.current?.send({ type: "broadcast", event: "round-score", payload: score });
+    await syncRef.current?.send("round-score", score);
   };
 
   const backToLobby = async () => {
     applyLobbyReset();
-    const channel = channelRef.current;
-    // Sem `roundStart` na presença: quem entrar agora cai no lobby, não na rodada antiga.
-    await channel?.track({ name: profile.name.trim(), avatar: profile.avatar, pin: room });
-    await channel?.send({ type: "broadcast", event: "back-to-lobby", payload: {} });
+    await syncRef.current?.send("back-to-lobby");
   };
 
   const showPartialPodium = async () => {
     const payload: PodiumPayload = { round, scores };
     applyPodium(payload);
-    await channelRef.current?.send({ type: "broadcast", event: "podium-show", payload });
+    await syncRef.current?.send("podium-show", payload);
   };
 
   const finishGame = async () => {
     setFinished(true);
     setLastRoom(null, null);
-    await channelRef.current?.send({ type: "broadcast", event: "game-finished", payload: {} });
+    await syncRef.current?.send("game-finished");
   };
 
   const closeRoom = async () => {
@@ -449,6 +449,7 @@ export function TimeGame() {
     if (channel && supabase) await supabase.removeChannel(channel);
     activeRoundRef.current = 0;
     usedTargetValues.current = [];
+    syncRef.current?.clear();
     setHostRoom("time", room, false);
     setJoined(false);
     navigate({ search: "" }, { replace: true });

@@ -314,20 +314,29 @@ function drawLot(ctx: Ctx, sg: Ctx, lot: Lot, rnd: () => number) {
       })
       break
     }
-    case 'loteria': {
-      // lotérica: fachada azul com faixa laranja, painel de dezenas e globo de bolinhas
-      tower(ctx, rnd, lot)
-      rect(ctx, x, G - 40, w - 4, 40, '#123a8a')
-      rect(ctx, x, G - 40, w - 4, 4, '#ff8a00')
-      rect(ctx, x, G - 6, w - 4, 6, '#0b2560')
-      rect(ctx, x + 5, G - 31, 30, 23, '#07040f')
-      circle(ctx, x + 20, G - 20, 9, 'rgba(160,220,255,.25)')
-      for (let i = 0; i < 9; i++) circle(ctx, x + 14 + (i % 3) * 5, G - 24 + Math.floor(i / 3) * 4, 1.5, NEON[i % NEON.length])
-      rect(ctx, x + 19, G - 11, 2, 3, '#4a3a6e')
-      rect(ctx, x + w - 22, G - 26, 12, 26, '#07040f')
-      rect(ctx, x + w - 13, G - 14, 1, 2, '#ffe14a')
-      rect(ctx, x + 38, G - 31, 22, 13, '#07040f')
-      neonSign(sg, sign, cx - 2, G - 52, '#ffe14a')
+    case 'banco': {
+      // banco: fachada de pedra com frontão e colunas e letreiro dourado (sem torre azul atrás)
+      rect(ctx, x, G - 44, w - 4, 44, '#4f4c66')
+      rect(ctx, x - 2, G - 48, w, 4, '#8f8ba8')
+      rect(ctx, x + 4, G - 52, w - 12, 4, '#b8b4cf')
+      rect(ctx, x + 12, G - 56, w - 28, 4, '#b8b4cf')
+      rect(ctx, x + 20, G - 60, w - 44, 4, '#b8b4cf')
+      for (let i = 0; i < 4; i++) {
+        const colX = x + 4 + i * ((w - 18) / 3)
+        rect(ctx, colX, G - 44, 5, 38, '#d9d6ea')
+        rect(ctx, colX - 1, G - 7, 7, 3, '#b8b4cf')
+      }
+      rect(ctx, x - 2, G - 4, w, 4, '#8f8ba8')
+      // vitrines entre as colunas (a do meio guarda o cifrão de LED) e porta entre a 3ª e a 4ª coluna
+      ;[x + 12, x + 35].forEach((wx) => {
+        rect(ctx, wx - 1, G - 36, 12, 22, '#b8b4cf')
+        rect(ctx, wx, G - 35, 10, 20, '#07040f')
+        rect(ctx, wx + 4, G - 35, 2, 20, '#2a2840')
+      })
+      rect(ctx, x + 56, G - 26, 13, 26, '#b8b4cf')
+      rect(ctx, x + 57, G - 25, 11, 25, '#07040f')
+      rect(ctx, x + 66, G - 13, 1, 2, '#ffd84a')
+      neonSign(sg, sign, cx - 2, G - 66, '#ffd84a')
       break
     }
     case 'torre': {
@@ -598,7 +607,6 @@ export function drawFrame(ctx: Ctx, layers: CityLayers, lots: Lot[], cam: number
     layers.manholes.forEach((wx) => steam(ctx, wx + ox, G + 37, t, wx))
     drawCars(ctx, cam, layers.worldW, t)
   }
-  drawLamps(ctx, cam, viewW)
   if (animate) rain(ctx, viewW, t)
 }
 
@@ -781,14 +789,15 @@ function drawDynamic(ctx: Ctx, lot: Lot, sx: number, t: number, animate: boolean
     case 'terreno':
       if (animate) fenceShock(ctx, sx, lot.w, t)
       break
-    case 'loteria': {
-      // painel de LED com a dezena sorteada da vez
-      const n = String((Math.floor((animate ? t : 0) / 1200) * 37 + 7) % 60 + 1).padStart(2, '0')
-      ctx.font = FONT
-      glow(ctx, '#ffe14a', 4, () => {
-        ctx.fillStyle = '#ffe14a'
-        textAt(ctx, n, Math.round(sx + 49 - ctx.measureText(n).width / 2), G - 24.5)
-      })
+    case 'banco': {
+      // cifrão no painel de LED, piscando
+      if (!animate || Math.floor(t / 600) % 2 === 0) {
+        ctx.font = FONT
+        glow(ctx, '#ffd84a', 4, () => {
+          ctx.fillStyle = '#ffd84a'
+          textAt(ctx, '$', Math.round(sx + 40 - ctx.measureText('$').width / 2), G - 21)
+        })
+      }
       break
     }
     case 'bar':
@@ -869,25 +878,6 @@ function drawCars(ctx: Ctx, cam: number, worldW: number, t: number) {
     ctx.fill()
     ctx.restore()
   })
-}
-
-/** Postes em primeiro plano (1.3x), com poça de luz na calçada. */
-function drawLamps(ctx: Ctx, cam: number, viewW: number) {
-  const spacing = 170
-  const off = cam * 1.3
-  const first = Math.floor((off - 40) / spacing)
-  for (let i = first; i * spacing - off < viewW + 20; i++) {
-    const x = Math.round(i * spacing + 120 - off)
-    const light = ctx.createRadialGradient(x + 9, G + 6, 0, x + 9, G + 6, 26)
-    light.addColorStop(0, 'rgba(255,214,140,.22)')
-    light.addColorStop(1, 'rgba(255,214,140,0)')
-    ctx.fillStyle = light
-    ctx.fillRect(x - 20, G - 20, 58, 50)
-    rect(ctx, x, 46, 3, H - 46, '#0b0716')
-    rect(ctx, x, 46, 11, 2, '#0b0716')
-    rect(ctx, x + 8, 48, 5, 2, '#0b0716')
-    glow(ctx, '#ffd68c', 8, () => rect(ctx, x + 8, 50, 5, 1, '#ffe6b0'))
-  }
 }
 
 /** Hash determinístico 0..1, para sortear sem guardar estado entre frames. */
@@ -1039,7 +1029,7 @@ const SKATERS = [
 const DOORS: Partial<Record<Lot['kind'], (lot: Lot) => number>> = {
   biblioteca: (lot) => lot.x + lot.w / 2,
   mercearia: (lot) => lot.x + lot.w / 2 - 2,
-  loteria: (lot) => lot.x + lot.w - 16,
+  banco: (lot) => lot.x + 62,
   torre: (lot) => lot.x + lot.w / 2,
   bar: (lot) => lot.x + 46,
   cassino: (lot) => lot.x + lot.w / 2 - 2,

@@ -23,3 +23,6 @@ Você é especialista no **Reflexo** (rota `/reflexo`). O arquivo fica em `src/p
 
 ## Como verificar
 Duas abas na mesma sala: iniciar, tocar antes do bife numa e depois do bife na outra, conferir as cenas, o pódio parcial e o final, encerrar a sala. `npm run lint && npm test`.
+
+## Cena do lobo
+`ReflexoStage` renderiza uma única `<img>` por fase (`espera`, `bife`, `comendo`, `triste`). Os GIFs têm transparência: nunca empilhe cenas, senão as animações anteriores aparecem por trás. Os eventos passam por `createRoomSync` (`round-start` e `back-to-lobby` reiniciam o log).

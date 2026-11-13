@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyClick, createMatch, currentPlayerId, forfeit } from './campo-minado-rules'
+import { applyClick, applyTimeout, createMatch, currentPlayerId, forfeit, turnRef } from './campo-minado-rules'
 
 const IDS = ['a', 'b', 'c']
 // células: 0 e 1 são bombas, o resto é seguro
@@ -62,5 +62,31 @@ describe('campo minado: turnos e rodadas', () => {
     const after = forfeit(m, gone)
     expect(after.lives[gone]).toBe(0)
     expect(currentPlayerId(after)).not.toBe(gone)
+  })
+
+  it('applyTimeout tira uma vida, não abre casa e passa a vez', () => {
+    const m = make(20)
+    const who = currentPlayerId(m)!
+    const after = applyTimeout(m, who, turnRef(m))
+    expect(after.lives[who]).toBe(m.lives[who] - 1)
+    expect(after.statuses).toEqual({})
+    expect(currentPlayerId(after)).not.toBe(who)
+  })
+
+  it('applyTimeout e applyClick ignoram turno que já passou', () => {
+    const m = make(20)
+    const who = currentPlayerId(m)!
+    const stale = turnRef(m)
+    const after = applyTimeout(m, who, stale)
+    expect(applyTimeout(after, currentPlayerId(after)!, stale)).toBe(after)
+    expect(applyClick(after, 5, currentPlayerId(after)!, stale)).toBe(after)
+  })
+
+  it('applyTimeout elimina quem fica sem vidas', () => {
+    let m = make(20, ['a', 'b'], 1)
+    const who = currentPlayerId(m)!
+    m = applyTimeout(m, who, turnRef(m))
+    expect(m.result?.winnerIds).toHaveLength(1)
+    expect(m.result?.winnerIds).not.toContain(who)
   })
 })

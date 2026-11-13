@@ -8,7 +8,7 @@ export const GROUND_Y = 132
 export const STREET_PAD = 36
 const LOT_GAP = 8
 
-export type LotKind = 'biblioteca' | 'mercearia' | 'loteria' | 'torre' | 'bar' | 'tvs' | 'terreno' | 'boate' | 'mural' | 'cassino'
+export type LotKind = 'biblioteca' | 'mercearia' | 'banco' | 'torre' | 'bar' | 'tvs' | 'terreno' | 'boate' | 'mural' | 'cassino'
 
 /**
  * Como cada jogo aparece na rua: tipo de lote, largura, altura da área clicável e letreiro.
@@ -17,7 +17,7 @@ export type LotKind = 'biblioteca' | 'mercearia' | 'loteria' | 'torre' | 'bar' |
 export const lotSpec: Record<GameId, { kind: LotKind; w: number; h: number; sign: string } | null> = {
   letters: { kind: 'biblioteca', w: 84, h: 78, sign: 'BIBLIOTECA' },
   weight: { kind: 'mercearia', w: 76, h: 92, sign: 'PESO' },
-  number: { kind: 'loteria', w: 82, h: 96, sign: 'LOTERIA' },
+  number: { kind: 'banco', w: 86, h: 70, sign: 'BANCO' },
   time: { kind: 'torre', w: 46, h: 124, sign: 'TEMPO' },
   impostor: { kind: 'bar', w: 84, h: 88, sign: 'BAR' },
   password: { kind: 'tvs', w: 80, h: 88, sign: 'TV' },

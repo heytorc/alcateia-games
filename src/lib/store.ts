@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { DEFAULT_TRANSITION, type TransitionId } from '@/constants/transitions'
 
 /** Jogos com sala multiplayer (reconexão pela última sala). */
-export type RoomGame = 'impostor' | 'time' | 'campo-minado' | 'reflexo' | 'provavel' | 'ordem'
+export type RoomGame = 'impostor' | 'time' | 'campo-minado' | 'reflexo' | 'provavel' | 'ordem' | 'proibidas' | 'number'
 
 type Settings = {
   allowRepeats: boolean
@@ -12,7 +12,6 @@ type Settings = {
   weightMin: number
   weightMax: number
   weightUnit: 'g' | 'kg'
-  numberDigits: number
   passwordCount: number
 }
 
@@ -50,7 +49,6 @@ export const defaultSettings: Settings = {
   weightMin: 10,
   weightMax: 5000,
   weightUnit: 'g',
-  numberDigits: 4,
   passwordCount: 5
 }
 

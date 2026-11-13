@@ -20,7 +20,9 @@ import { supabase } from "@/lib/realtime";
 
 import { useGameStore } from "@/lib/store";
 
-import { createClientId, createRoomPin } from "@/lib/utils";
+import { createRoomPin, tabClientId } from "@/lib/utils";
+import { createRoomSync, syncStorageKey, type RoomSync } from "@/lib/room-sync";
+import { useRoomWake } from "@/hooks/useRoomWake";
 import { JoinRoomDialog } from "@/components/games/JoinRoomDialog";
 import { roomDescriptionClass, roomHeadingClass, roomPageClass } from "@/components/games/room-styles";
 import { isHostRoom, setHostRoom, useRestoreRoom } from "@/hooks/useRestoreRoom";
@@ -30,6 +32,7 @@ import { GameButton } from "@/components/games/GameButton";
 import type { PlayerListItem } from "@/components/games/PlayerList";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useWords } from "@/hooks/useWords";
+import { pickHint } from "@/lib/impostor-rules";
 import { WolfFieldLobby } from "@/components/games/WolfFieldLobby";
 
 /** `votedId` nulo remove o voto de `voterId`. */
@@ -52,16 +55,22 @@ export function ImpostorGame() {
   const [gamePhase, setGamePhase] = useState<"LOBBY" | "PLAYING" | "RESULTS">("LOBBY");
   const [votes, setVotes] = useState<Record<string, string>>({});
   const [impostorId, setImpostorId] = useState("");
+  const [firstId, setFirstId] = useState("");
+  const [hint, setHint] = useState("");
   const [roomClosed, setRoomClosed] = useState(false);
   const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 768px)");
-  const playerId = useRef(createClientId());
+  // id estável na aba: quem recarrega a página continua sendo o mesmo jogador (e o mesmo papel)
+  const playerId = useRef(tabClientId());
   const roster: PlayerListItem[] = players.map((player) => ({
     ...player,
     tag: player.id === playerId.current ? (isHost ? "HOST" : "VOCÊ") : undefined,
   }));
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
   const usedWords = useRef<string[]>([]);
+  const syncRef = useRef<RoomSync | null>(null);
+  const isHostRef = useRef(isHost);
+  isHostRef.current = isHost;
   const { profile, setLastRoom } = useGameStore();
 
   useRestoreRoom("impostor", (restoredPin) => {
@@ -70,35 +79,47 @@ export function ImpostorGame() {
     setIsHost(isHostRoom("impostor", restoredPin));
   });
 
+  const reconnectKey = useRoomWake(channelRef, joined, () => void syncRef.current?.request());
+
   useEffect(() => {
     const client = supabase;
     if (!joined || !client || !room) return;
     const channel = client.channel(`impostor:${room}`, { config: { presence: { key: playerId.current } } });
+    const sync = createRoomSync({
+      channel,
+      selfId: playerId.current,
+      isHost: () => isHostRef.current,
+      storageKey: syncStorageKey("impostor", room),
+      resetEvents: ["round-start"],
+      handlers: {
+        "round-start": (payload) => {
+          setGamePhase("PLAYING");
+          setIsImpostor(payload.impostorId === playerId.current);
+          setSecretWord(payload.word);
+          setImpostorId(payload.impostorId);
+          setFirstId(payload.firstId ?? "");
+          setHint(payload.hint ?? "");
+          setVotes({});
+        },
+        vote: (payload) => setVotes((prev) => applyVote(prev, payload.voterId, payload.votedId)),
+        "end-round": () => setGamePhase("RESULTS"),
+      },
+    });
+    syncRef.current = sync;
+    channel.on("presence", { event: "sync" }, () => {
+      const state = channel.presenceState<{ name: string; avatar: string }>();
+      setPlayers(
+        Object.entries(state).map(([id, entries]) => ({
+          id,
+          name: entries[0]?.name ?? "Desconhecido",
+          avatar: entries[0]?.avatar ?? "🐺",
+        })),
+      );
+    });
+    sync.attach();
     channel
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState<{ name: string; avatar: string }>();
-        setPlayers(
-          Object.entries(state).map(([id, entries]) => ({
-            id,
-            name: entries[0]?.name ?? "Desconhecido",
-            avatar: entries[0]?.avatar ?? "🐺",
-          })),
-        );
-      })
-      .on("broadcast", { event: "round-start" }, ({ payload }) => {
-        setGamePhase("PLAYING");
-        setIsImpostor(payload.impostorId === playerId.current);
-        setSecretWord(payload.word);
-        setImpostorId(payload.impostorId);
-        setVotes({});
-      })
-      .on("broadcast", { event: "vote" }, ({ payload }) => {
-        setVotes((prev) => applyVote(prev, payload.voterId, payload.votedId));
-      })
-      .on("broadcast", { event: "end-round" }, () => {
-        setGamePhase("RESULTS");
-      })
       .on("broadcast", { event: "room-closed" }, () => {
+        sync.clear();
         setJoined(false);
         setGamePhase("LOBBY");
         setRoomClosed(true);
@@ -109,13 +130,16 @@ export function ImpostorGame() {
         if (status === "SUBSCRIBED") {
           await channel.track({ name: profile.name.trim(), avatar: profile.avatar, pin: room });
           setLastRoom(room, "impostor");
+          // Reconectou ou recarregou: o anfitrião retoma a rodada salva; os demais pedem a atual a ele.
+          if (isHostRef.current) sync.restore();
+          else void sync.request();
         }
       });
     channelRef.current = channel;
     return () => {
       void client.removeChannel(channel);
     };
-  }, [joined, profile.avatar, profile.name, room]);
+  }, [joined, profile.avatar, profile.name, room, reconnectKey]);
   const join = () => {
     if (!profile.name.trim() || !room.trim()) return;
     setIsHost(false);
@@ -144,12 +168,18 @@ export function ImpostorGame() {
     } while (usedWords.current.includes(word) && usedWords.current.length < words.length);
     usedWords.current.push(word);
 
+    // Sorteia quem começa; se for o impostor, ele recebe uma palavra de apoio para disfarçar.
+    const firstId = ids[Math.floor(Math.random() * ids.length)] ?? playerId.current;
+    const hint = firstId === impostorId ? (pickHint(word) ?? "") : "";
+
     setGamePhase("PLAYING");
     setIsImpostor(impostorId === playerId.current);
     setSecretWord(word);
     setImpostorId(impostorId);
+    setFirstId(firstId);
+    setHint(hint);
     setVotes({});
-    await channel.send({ type: "broadcast", event: "round-start", payload: { impostorId, word } });
+    await syncRef.current?.send("round-start", { impostorId, word, firstId, hint });
   };
   const castVote = async (votedId: string | null) => {
     const channel = channelRef.current;
@@ -157,22 +187,19 @@ export function ImpostorGame() {
 
     setVotes((prev) => applyVote(prev, playerId.current, votedId));
 
-    await channel.send({
-      type: "broadcast",
-      event: "vote",
-      payload: { voterId: playerId.current, votedId },
-    });
+    await syncRef.current?.send("vote", { voterId: playerId.current, votedId });
   };
   const endRound = async () => {
     const channel = channelRef.current;
     if (!channel) return;
-    await channel.send({ type: "broadcast", event: "end-round", payload: {} });
+    await syncRef.current?.send("end-round");
     setGamePhase("RESULTS");
   };
   const closeRoom = async () => {
     const channel = channelRef.current;
     if (channel) await channel.send({ type: "broadcast", event: "room-closed", payload: {} });
     if (channel && supabase) await supabase.removeChannel(channel);
+    syncRef.current?.clear();
     setHostRoom("impostor", room, false);
     setJoined(false);
     setGamePhase("LOBBY");
@@ -321,6 +348,18 @@ export function ImpostorGame() {
                 className={`mb-[25px] rounded-md px-7 py-4 font-heading text-[30px] font-bold tracking-wide text-brand-gold ${isImpostor ? "w-full max-w-[280px] rounded-sm bg-[#ffe14a] !text-[#12040a] shadow-[6px_6px_0_#ff4552]" : "bg-panel-dark"}`}>
                 {isImpostor ? "???" : secretWord}
               </div>
+              {firstId && (
+                <p className="-mt-3 text-center text-base text-[#e8e2ff]" aria-live="polite">
+                  {firstId === playerId.current
+                    ? "Você começa a rodada!"
+                    : `Quem começa: ${players.find((p) => p.id === firstId)?.avatar ?? "🐺"} ${players.find((p) => p.id === firstId)?.name ?? "jogador"}`}
+                </p>
+              )}
+              {isImpostor && firstId === playerId.current && hint && (
+                <p className="-mt-2 rounded-sm border border-[#ffe14a]/60 bg-[#12040a]/80 px-3 py-2 text-center text-sm text-[#ffe14a]">
+                  Palavra de apoio para disfarçar: <strong>{hint}</strong>
+                </p>
+              )}
 
               <div className={`mb-5 w-full text-center ${isImpostor ? "rounded-md bg-[#12040a]/80 px-3 py-4 ring-1 ring-[#a78bfa]/40" : ""}`}>
                 <p className="mb-3 text-sm text-[#c2b9d1]">Vote em quem você acha que é o impostor:</p>

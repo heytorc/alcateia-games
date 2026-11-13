@@ -1,19 +1,5 @@
-/** Regras puras do Palavras Proibidas: participantes, sorteio das cartas e pódio por acertos. */
+/** Regras puras do Palavras Proibidas: ordem de cada rodada, cartas, vez de cada descritor e pódio por acertos. */
 import { drawManyUnique } from "@/lib/utils";
-
-export const MAX_PARTICIPANTS = 12;
-export const MAX_NAME_LENGTH = 20;
-
-/** Erro de validação do nome a incluir, ou `null` se ele pode entrar na lista. */
-export function participantError(name: string, participants: readonly string[]) {
-  const trimmed = name.trim();
-  if (!trimmed) return "Digite um nome.";
-  if (trimmed.length > MAX_NAME_LENGTH) return `Use até ${MAX_NAME_LENGTH} caracteres.`;
-  if (participants.some((other) => other.toLocaleLowerCase("pt-BR") === trimmed.toLocaleLowerCase("pt-BR")))
-    return "Esse nome já está na lista.";
-  if (participants.length >= MAX_PARTICIPANTS) return `No máximo ${MAX_PARTICIPANTS} participantes.`;
-  return null;
-}
 
 /**
  * Sorteia `count` cartas priorizando as que ainda não saíram (`used`, por palavra). Se as inéditas
@@ -30,12 +16,45 @@ export function drawCards<T extends { word: string }>(cards: readonly T[], used:
   return { picked, used: nextUsed };
 }
 
-export type Standing = { name: string; hits: number; rank: number };
+/**
+ * Uma rodada: cada jogador descreve uma carta, na ordem sorteada. `hits` acumula os acertos da partida
+ * (quem adivinhou pontua; quem descreve não).
+ */
+export type TabooRound<T> = { round: number; order: string[]; cards: T[]; turn: number; hits: Record<string, number> };
+
+/** Sorteia a ordem e uma carta por jogador. Devolve a rodada e o novo histórico de cartas usadas. */
+export function buildRound<T extends { word: string }>(
+  round: number,
+  playerIds: readonly string[],
+  pool: readonly T[],
+  used: readonly string[],
+  hits: Record<string, number>,
+) {
+  const order = drawManyUnique(playerIds, playerIds.length);
+  const drawn = drawCards(pool, used, order.length);
+  return { state: { round, order, cards: drawn.picked, turn: 0, hits } as TabooRound<T>, used: drawn.used };
+}
+
+export const describerId = <T>(r: TabooRound<T>) => r.order[r.turn] ?? null;
+export const currentCard = <T>(r: TabooRound<T>) => r.cards[r.turn] ?? null;
+export const roundOver = <T>(r: TabooRound<T>) => r.turn >= r.order.length;
+
+/**
+ * Fecha a vez do descritor: `guesserId` ganha um ponto (`null` = ninguém acertou ou o tempo acabou) e a vez
+ * passa ao próximo. Só vale para a vez em curso (`turn`), então um resultado repetido ou atrasado é ignorado.
+ */
+export function resolveTurn<T>(r: TabooRound<T>, turn: number, guesserId: string | null): TabooRound<T> {
+  if (roundOver(r) || turn !== r.turn) return r;
+  const scores = guesserId && guesserId !== describerId(r) ? { ...r.hits, [guesserId]: (r.hits[guesserId] ?? 0) + 1 } : r.hits;
+  return { ...r, turn: r.turn + 1, hits: scores };
+}
+
+export type Standing = { id: string; hits: number; rank: number };
 
 /** Pódio do maior para o menor número de acertos; empates dividem a posição. */
-export function standings(hits: Record<string, number>, participants: readonly string[]): Standing[] {
-  const scored = participants.map((name) => ({ name, hits: hits[name] ?? 0 }));
+export function standings(hits: Record<string, number>, ids: readonly string[]): Standing[] {
+  const scored = ids.map((id) => ({ id, hits: hits[id] ?? 0 }));
   return scored
     .map((entry) => ({ ...entry, rank: scored.filter((other) => other.hits > entry.hits).length + 1 }))
-    .sort((left, right) => left.rank - right.rank || left.name.localeCompare(right.name, "pt-BR"));
+    .sort((left, right) => left.rank - right.rank);
 }
